@@ -57,9 +57,14 @@ code/languages/org.iets3.core/build/tmp
 .mpsconfig
 
 # -----------------------------------------------------------
-# GRADLE
+# GRADLE (allow wrapper explicitly)
 # -----------------------------------------------------------
 .gradle/
+!gradlew
+!gradlew.bat
+!gradle/wrapper/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 
 
 # Test results
