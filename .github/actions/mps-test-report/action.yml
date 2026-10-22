@@ -17,6 +17,11 @@ inputs:
   append-markdown:
     description: Optional markdown file appended to the job summary after the test results
     default: ''
+  create-check-run:
+    description: >-
+      Publish the results as a check run, which fails if any test failed. With 'false' the failures are only
+      annotated, so the build status depends on the test jobs alone
+    default: 'true'
 
 runs:
   using: composite
@@ -40,7 +45,7 @@ runs:
         fail_on_failure: false
         require_tests: false
         # PRs from forks get a read-only token and cannot create check runs
-        annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
+        annotate_only: ${{ inputs.create-check-run != 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
     - name: Write job summary
       shell: bash
