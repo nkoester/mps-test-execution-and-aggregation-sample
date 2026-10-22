@@ -15,10 +15,11 @@ in a running MPS.
 ./gradlew check                        # all of the above
 ./gradlew runFailingInterpretedTests   # demo: TestExecutionSample.failingTests contains a broken test, fails on purpose
 ./gradlew runFailingGeneratedTests     # demo: TestExecutionSample.generatedFailingTests, fails on purpose
+./gradlew checkFailingModels           # demo: TestExecutionSample.failingModelChecks has a model check error and warning
 ./gradlew --continue runAllTests       # everything incl. the demos in one run; always fails as the demos fail
 ```
 
-Results: `build/test-results/<task>/` (`interpreted-*`, `generated*`, `checkmodels`). A task fails on test failures or if no results were written.
+Results: `build/test-results/<folder>/` (`interpreted-*`, `generated*`, `checkmodels*`). A task fails on test failures or if no results were written.
 
 ## How it works
 

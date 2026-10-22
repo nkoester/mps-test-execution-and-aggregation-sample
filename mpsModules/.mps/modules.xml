@@ -3,6 +3,7 @@
   <component name="MPSProject">
     <projectModules>
       <modulePath path="$PROJECT_DIR$/languages/TestExecutionSample/TestExecutionSample.mpl" folder="02-modules" />
+      <modulePath path="$PROJECT_DIR$/solutions/TestExecutionSample.failingModelChecks/TestExecutionSample.failingModelChecks.msd" folder="" />
       <modulePath path="$PROJECT_DIR$/solutions/TestExecutionSample.failingTests/TestExecutionSample.failingTests.msd" folder="02-modules" />
       <modulePath path="$PROJECT_DIR$/solutions/TestExecutionSample.generatedFailingTests/TestExecutionSample.generatedFailingTests.msd" folder="02-modules" />
       <modulePath path="$PROJECT_DIR$/solutions/TestExecutionSample.generatedTests/TestExecutionSample.generatedTests.msd" folder="02-modules" />

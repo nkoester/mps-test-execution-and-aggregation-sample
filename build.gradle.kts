@@ -178,21 +178,30 @@ val runInterpretedLanguageTests = tasks.register<TestLanguages>("runInterpretedL
     )
 }
 
-// Model checking of the whole MPS project. The project's own language must be compiled (classes_gen) for its
+// Model checking of the MPS project. The project's own language must be compiled (classes_gen) for its
 // models to be checked, so the languages are built first. The dependencies are loaded via the project library
 // (mpsModules/.mps/libraries.xml -> build/dependencies).
-val checkModels = tasks.register<MpsCheck>("checkModels") {
+fun MpsCheck.checkMpsModels(resultFile: String) {
     dependsOn(buildLanguages)
-    description = "Run the MPS model checker on all modules of the project."
+    group = "verification"
     // same JBR as the ant tasks (downloadJbr); JavaExec rejects an executable that differs from its javaLauncher
     javaLauncher.set(tasks.downloadJbr.flatMap { it.javaLauncher })
     mpsHome.set(layout.dir(provider { mpsGenericPath.toFile() }))
     projectLocation.set(layout.projectDirectory.dir("mpsModules"))
     pluginRoots.add(mpsHome.dir("plugins"))
-    junitFile.set(layout.buildDirectory.file("test-results/checkmodels/TEST-checkModels.xml"))
+    junitFile.set(layout.buildDirectory.file("test-results/$resultFile"))
     // one test case per message
     junitFormat.set("message")
     maxHeapSize = "4G"
+}
+
+// contains a model check error and a warning on purpose; checked only by checkFailingModels
+val failingModelChecksModule = "TestExecutionSample.failingModelChecks"
+
+val checkModels = tasks.register<MpsCheck>("checkModels") {
+    description = "Run the MPS model checker on all modules of the project except $failingModelChecksModule."
+    checkMpsModels("checkmodels/TEST-checkModels.xml")
+    excludeModules.add(failingModelChecksModule)
 }
 
 tasks.check {
@@ -238,12 +247,22 @@ val runFailingGeneratedTests = tasks.register<TestLanguages>("runFailingGenerate
     )
 }
 
+// Demo of a failing model check - not part of 'check'. TestExecutionSample.failingModelChecks contains a model
+// check error and a warning; the task is expected to fail and the report lists both with their node links.
+val checkFailingModels = tasks.register<MpsCheck>("checkFailingModels") {
+    description = "Run the MPS model checker on $failingModelChecksModule, which contains a model check error and a warning - this task is expected to fail."
+    checkMpsModels("checkmodels-failing/TEST-checkFailingModels.xml")
+    modules.add(failingModelChecksModule)
+    // the backend writes only errors to the JUnit file; warnings are included (as failures) only with this flag
+    warningAsError.set(true)
+}
+
 // All test tasks including the failing demos. Run with --continue, otherwise Gradle stops at the first failing
 // task: ./gradlew --continue runAllTests (fails by design, as the demos fail)
 tasks.register("runAllTests") {
     group = "verification"
     description = "Run all tests and model checks, including the failing demos - use with --continue."
-    dependsOn(tasks.check, runFailingInterpretedTests, runFailingGeneratedTests)
+    dependsOn(tasks.check, runFailingInterpretedTests, runFailingGeneratedTests, checkFailingModels)
 }
 
 tasks.assemble {

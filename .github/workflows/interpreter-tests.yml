@@ -132,7 +132,12 @@ jobs:
             name: checkmodels
             results: checkmodels
             expectFailure: false
-    continue-on-error: ${{ matrix.expectFailure }}
+          # demo task, TestExecutionSample.failingModelChecks contains a model check error and a warning
+          - task: checkFailingModels
+            category: modelcheck
+            name: failing
+            results: checkmodels-failing
+            expectFailure: true
     steps:
       - uses: actions/checkout@v4
 
@@ -158,8 +163,10 @@ jobs:
 
       # -PprebuiltBuildScripts skips buildScripts; its dependencies (setup) still run.
       # xvfb-run: the generated tests' launchtests starts an IdeaEnvironment, which needs an X11 display
+      # demo tasks fail by design; 'Verify expected failure' decides the job result instead
       - name: Run ${{ matrix.task }}
         id: gradle
+        continue-on-error: ${{ matrix.expectFailure }}
         run: xvfb-run -a ./gradlew --no-daemon --stacktrace -PprebuiltBuildScripts ${{ matrix.task }}
 
       # file names keep buildScripts first, then the matrix order
@@ -187,14 +194,43 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      # a demo task must fail, and because of failing tests (not a crash or a broken build)
+      - name: Verify expected failure
+        if: ${{ matrix.expectFailure && !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.gradle.outcome }}
+          RESULTS: build/test-results/${{ matrix.results }}
+        run: |
+          if [[ "$OUTCOME" != failure ]]; then
+            echo "::error::${{ matrix.task }} is expected to fail, but its outcome is '$OUTCOME'"
+            exit 1
+          fi
+          python3 -I - "$RESULTS" <<'EOF'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          # same result files as the report action; TESTS-TestSuites.xml (aggregate) does not match
+          files = {f for p in ("InterpreterTestSuite*.xml", "TEST-*.xml") for f in Path(sys.argv[1]).rglob(p)}
+          failed = sum(
+              case.find("failure") is not None or case.find("error") is not None
+              for f in files
+              for case in ET.parse(f).getroot().iter("testcase")
+          )
+          if not failed:
+              print(f"::error::{sys.argv[1]}: the task failed, but its result files contain no failing tests")
+              sys.exit(1)
+          print(f"Failed as expected: {failed} failing tests in {len(files)} result files")
+          EOF
+
   report:
     name: Test report
     needs: test
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    # checks: write only needed with create-check-run: true
     permissions:
       contents: read
-      checks: write
     steps:
       - uses: actions/checkout@v4
 
@@ -215,6 +251,8 @@ jobs:
           } > "$RUNNER_TEMP/gradle-runs.md"
 
       # The only job summary of the run, so the test results come first, then the Gradle runs
+      # no check run: it would fail on the demo failures; the test jobs carry the build status
       - uses: ./.github/actions/mps-test-report
         with:
           append-markdown: ${{ runner.temp }}/gradle-runs.md
+          create-check-run: false

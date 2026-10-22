@@ -27,6 +27,7 @@ STATUSES = ("passed", "failed", "error", "skipped")
 ICONS = {"passed": "✅", "failed": "❌", "error": "💥", "skipped": "⏭️"}
 # TESTS-TestSuites.xml (ant junitreport aggregate) intentionally does not match
 RESULT_FILES = ("InterpreterTestSuite*.xml", "TEST-*.xml")
+JUNIT_ENGINE_SUITES = {"JUnit Jupiter", "JUnit Vintage", "JUnit Platform Suite"}
 NODE_URL = re.compile(r"https?://[^\s\]]+/node\?ref=[^\s\]]+")
 # a node URL, optionally in brackets, as appended to failure messages
 NODE_URL_SUFFIX = re.compile(r"\s*\[?https?://[^\s\]]+/node\?ref=[^\s\]]+\]?")
@@ -88,8 +89,12 @@ def parse_file(path: Path):
             # node reference: interpreter properties (suite or test case level), else a node URL in the failure
             # message or text (model checker; generated tests once their matchers append it)
             plain = re.sub(r"\(.*\)$", "", name)
+            suite_name = suite.get("name", path.stem)
+            # JUnit 5 reports name the suite after the engine ('JUnit Jupiter'), the test class is the classname
+            if suite_name in JUNIT_ENGINE_SUITES and case.get("classname"):
+                suite_name = case.get("classname")
             yield {
-                "suite": suite.get("name", path.stem),
+                "suite": suite_name,
                 "name": name,
                 "classname": case.get("classname", ""),
                 "time": float(case.get("time") or 0),
