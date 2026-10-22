@@ -22,7 +22,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-CATEGORIES = {"interpreted": "Interpreted tests", "generated": "Generated Java tests", "modelcheck": "Model checker"}
+# also the report order; unknown categories follow by name
+CATEGORIES = {"modelcheck": "Model checker", "interpreted": "Interpreted tests", "generated": "Generated Java tests"}
 STATUSES = ("passed", "failed", "error", "skipped")
 ICONS = {"passed": "✅", "failed": "❌", "error": "💥", "skipped": "⏭️"}
 # TESTS-TestSuites.xml (ant junitreport aggregate) intentionally does not match
@@ -148,10 +149,10 @@ def overview(groups: dict[str, list[dict]]) -> list[str]:
     return out + [""]
 
 
-def run_section(run: dict, base: str) -> list[str]:
+def run_section(run: dict, base: str, number: str) -> list[str]:
     s = stats(run["cases"])
     out = [
-        f"### {icon(s)} {run['name']}",
+        f"### {number} {icon(s)} {run['name']}",
         "",
         f"{s['tests']} tests: {s['passed']} passed, {s['failed']} failed, {s['error']} errors, "
         f"{s['skipped']} skipped, {s['time']:.3f} s",
@@ -188,11 +189,11 @@ def main() -> int:
         groups.setdefault(run["category"], []).append(run)
 
     out = ["# Test results", "", *overview(groups)]
-    for category, category_runs in groups.items():
+    for i, (category, category_runs) in enumerate(groups.items(), 1):
         s = stats([c for r in category_runs for c in r["cases"]])
-        out += [f"## {icon(s)} {CATEGORIES.get(category, category)}", ""]
-        for run in category_runs:
-            out += run_section(run, base)
+        out += [f"## {i}. {icon(s)} {CATEGORIES.get(category, category)}", ""]
+        for j, run in enumerate(category_runs, 1):
+            out += run_section(run, base, f"{i}.{j}")
 
     print("\n".join(out))
     return 0
