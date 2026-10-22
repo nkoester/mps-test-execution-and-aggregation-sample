@@ -32,6 +32,12 @@ JUNIT_ENGINE_SUITES = {"JUnit Jupiter", "JUnit Vintage", "JUnit Platform Suite"}
 NODE_URL = re.compile(r"https?://[^\s\]]+/node\?ref=[^\s\]]+")
 # a node URL, optionally in brackets, as appended to failure messages
 NODE_URL_SUFFIX = re.compile(r"\s*\[?https?://[^\s\]]+/node\?ref=[^\s\]]+\]?")
+# model checker messages start with the severity, e.g. 'Error: Type mismatch ...'
+SEVERITY = re.compile(r"^(Error|Warning|Info):\s*")
+# generated test names end with the node id of the test item, but carry no node reference to strip it with
+NODE_ID_SUFFIX = re.compile(r"_\d{10,}$")
+# runs with fewer test cases are shown in a single table, larger ones fold their passed tests
+FOLD_MIN_CASES = 5
 
 
 def ref_from_text(*texts: str) -> str | None:
@@ -48,27 +54,32 @@ def properties(element: ET.Element) -> dict[str, str]:
 
 
 def md(text: str, limit: int = 300) -> str:
-    # node URLs in messages are already in the Node column
+    # node URLs in messages are already linked from the test name
     text = NODE_URL_SUFFIX.sub("", " ".join(text.split())).strip()
     if len(text) > limit:
         text = text[: limit - 1] + "…"
     return text.replace("|", "\\|")
 
 
-def node_url(base: str, case: dict) -> str:
+def test_cell(base: str, case: dict) -> str:
+    """Short test name, linked to its node if known, followed by the severity (model checker) or test class."""
     ref = case["ref"]
-    if not ref:
-        return ""
-    node_id = ref.rsplit("/", 1)[-1]
-    if case["classname"].endswith("." + node_id):
-        # model checker: classname is <root node presentation>.<node id>
+    node_id = ref.rsplit("/", 1)[-1] if ref else None
+    if node_id and case["classname"].endswith("." + node_id):
+        # model checker: classname is <root node presentation>.<node id>, the name repeats the message
         name = case["classname"].removesuffix("." + node_id)
+        severity = SEVERITY.match(case["message"])
+        detail = severity.group(1) if severity else ""
     else:
         # interpreter/generated: test case names end with the node id, e.g. brokenOnPurpose_item0_1515176184444827057;
         # JUnit 5 reports append the parameter list, e.g. brokenOnPurpose_item0_1515176184444827057()
-        name = re.sub(r"\(.*\)$", "", case["name"]).removesuffix("_" + node_id)
-    name = md(name, 60).replace("[", "(").replace("]", ")")
-    return f"[open {name} in MPS]({base}/node?ref={quote(ref, safe='')})"
+        name = re.sub(r"\(.*\)$", "", case["name"])
+        name = name.removesuffix("_" + node_id) if node_id else NODE_ID_SUFFIX.sub("", name)
+        detail = case["suite"].rsplit(".", 1)[-1]
+    name = md(name, 60)
+    if ref:
+        name = f"[{name.replace('[', '(').replace(']', ')')}]({base}/node?ref={quote(ref, safe='')})"
+    return f"{name} · {md(detail, 60)}" if detail else name
 
 
 def parse_file(path: Path):
@@ -149,8 +160,19 @@ def overview(groups: dict[str, list[dict]]) -> list[str]:
     return out + [""]
 
 
+def case_table(cases: list[dict], base: str) -> list[str]:
+    # failures first, then by suite/name
+    order = {"error": 0, "failed": 1, "skipped": 2, "passed": 3}
+    out = ["| | Test | Time (s) | Message |", "|---|---|---|---|"]
+    for c in sorted(cases, key=lambda c: (order[c["status"]], c["suite"], c["name"])):
+        message = SEVERITY.sub("", md(c["message"]))
+        out.append(f"| {ICONS[c['status']]} | {test_cell(base, c)} | {c['time']:.3f} | {message} |")
+    return out + [""]
+
+
 def run_section(run: dict, base: str, number: str) -> list[str]:
-    s = stats(run["cases"])
+    cases = run["cases"]
+    s = stats(cases)
     out = [
         f"### {number} {icon(s)} {run['name']}",
         "",
@@ -158,18 +180,22 @@ def run_section(run: dict, base: str, number: str) -> list[str]:
         f"{s['skipped']} skipped, {s['time']:.3f} s",
         "",
     ]
-    if not run["cases"]:
+    if not cases:
         # the model checker only reports failed checks
         return out + ["No findings." if run["files"] else "No result files found.", ""]
-    out += ["| | Test | Suite | Time (s) | Node | Message |", "|---|---|---|---|---|---|"]
-    # failures first, then by suite/name
-    order = {"error": 0, "failed": 1, "skipped": 2, "passed": 3}
-    for c in sorted(run["cases"], key=lambda c: (order[c["status"]], c["suite"], c["name"])):
-        out.append(
-            f"| {ICONS[c['status']]} | `{c['name']}` | `{c['suite']}` | {c['time']:.3f} "
-            f"| {node_url(base, c)} | {md(c['message'])} |"
-        )
-    return out + [""]
+    # full suite names here, the table shows only the class name
+    suites = sorted({c["suite"] for c in cases})
+    out += [("Suite: " if len(suites) == 1 else "Suites: ") + ", ".join(f"`{s}`" for s in suites), ""]
+    if len(cases) < FOLD_MIN_CASES:
+        return out + case_table(cases, base)
+    failures = [c for c in cases if c["status"] != "passed"]
+    passed = [c for c in cases if c["status"] == "passed"]
+    if failures:
+        out += case_table(failures, base)
+    if passed:
+        # GitHub needs the blank line after <summary> to render the markdown table inside
+        out += ["<details>", f"<summary>{len(passed)} passed</summary>", "", *case_table(passed, base), "</details>", ""]
+    return out
 
 
 def main() -> int:
