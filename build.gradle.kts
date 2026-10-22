@@ -71,12 +71,15 @@ val setup = tasks.register("setup") {
 }
 
 // 'static' MPS build solution to build the actual build and test XMLs
+// -PprebuiltBuildScripts: use the generated ant scripts already present (CI generates them once and shares them)
+val prebuiltBuildScripts = providers.gradleProperty("prebuiltBuildScripts")
 val buildScripts = tasks.register<BuildLanguages>("buildScripts") {
     group = "build"
     description = "Build the buildAll.xml ANT configuration needed to build the MPS project."
 
     dependsOn(setup)
     script = "$projectDir/buildAll.xml"
+    onlyIf("ant scripts are not prebuilt (-PprebuiltBuildScripts)") { !prebuiltBuildScripts.isPresent }
 }
 
 val buildLanguages = tasks.register<BuildLanguages>("buildLanguages") {
@@ -123,9 +126,10 @@ fun BuildLanguages.runInterpreterTests(antScript: String, resultsDir: Provider<D
 
 // Case 1 - no build needed: the tests in HeadlessInterpreterTest.tests are plain user models written
 // with published iets3 languages only. They are loaded straight from their source folder and
-// interpreted; nothing of this project is generated or compiled.
+// interpreted; nothing of this project is generated or compiled. Only the ant script itself is
+// generated from the build model (buildScripts), as it is not checked in.
 val runInterpretedTests = tasks.register<BuildLanguages>("runInterpretedTests") {
-    dependsOn(setup)
+    dependsOn(buildScripts)
     description = "Interpret the user-model tests (HeadlessInterpreterTest.tests) without building anything."
     runInterpreterTests("run-interpreted-no-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-no-build"))
 }
@@ -146,7 +150,7 @@ tasks.check {
 // Demo of a failing run - not part of 'check'. HeadlessInterpreterTest.failingTests contains a test that fails
 // on purpose; the task fails and the report shows the failure with its node URL and the nodeRef properties.
 tasks.register<BuildLanguages>("runFailingInterpretedTests") {
-    dependsOn(setup)
+    dependsOn(buildScripts)
     description = "Interpret HeadlessInterpreterTest.failingTests, which contains a broken test - this task is expected to fail."
     runInterpreterTests("run-interpreted-failing-tests.xml", layout.buildDirectory.dir("test-results/interpreted-failing"))
 }

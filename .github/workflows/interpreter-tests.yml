@@ -14,8 +14,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Generates the ant scripts (build.xml, run-*.xml) from the build model once; the test jobs reuse them
+  scripts:
+    name: buildScripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK for Gradle itself; the ant/MPS tasks run on the JBR downloaded by the build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # caches the Gradle user home: wrapper, MPS, JBR and the MPS dependency zips.
+      # This job resolves all downloads the test jobs need, so it is the only one writing the cache
+      # (default branch only); the test jobs restore its entry.
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run buildScripts
+        run: ./gradlew --no-daemon --stacktrace buildScripts
+
+      - name: Upload ant scripts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ant-scripts
+          path: |
+            build.xml
+            run-*.xml
+          if-no-files-found: error
+          retention-days: 1
+
   test:
     name: ${{ matrix.task }}
+    needs: scripts
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -28,8 +61,6 @@ jobs:
           - task: runInterpretedLanguageTests
             results: interpreted-lang-build
             expectFailure: false
-            # resolves the same downloads as the others, so its Gradle cache entry is shared by all three
-            writeCache: true
           # demo task, contains a test that fails on purpose
           - task: runFailingInterpretedTests
             results: interpreted-failing
@@ -38,20 +69,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # JDK for Gradle itself; the ant/MPS tasks run on the JBR downloaded by the build
+      - uses: actions/download-artifact@v4
+        with:
+          name: ant-scripts
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      # caches the Gradle user home: wrapper, MPS, JBR and the MPS dependency zips
       - uses: gradle/actions/setup-gradle@v4
         with:
-          # only one job writes the cache, and only on the default branch; the others restore its entry
-          cache-read-only: ${{ !matrix.writeCache || github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+          cache-read-only: true
 
+      # -PprebuiltBuildScripts skips buildScripts; its dependencies (setup) still run
       - name: Run ${{ matrix.task }}
-        run: ./gradlew --no-daemon --stacktrace ${{ matrix.task }}
+        run: ./gradlew --no-daemon --stacktrace -PprebuiltBuildScripts ${{ matrix.task }}
 
       - name: Upload test results
         if: ${{ !cancelled() }}
