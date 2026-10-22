@@ -194,7 +194,7 @@
     </language>
   </registry>
   <node concept="1l3spW" id="42zbFMCVoXW">
-    <property role="TrG5h" value="headless-interpreter-sample" />
+    <property role="TrG5h" value="test-execution-and-aggregation-sample" />
     <property role="2DA0ip" value="../../.." />
     <node concept="2igEWh" id="1CcWqP0fQA1" role="1hWBAP">
       <property role="3UIfUI" value="6096" />
@@ -290,20 +290,20 @@
     </node>
     <node concept="1l3spV" id="42zbFMCVoYs" role="1l3spN">
       <node concept="m$_wl" id="1CcWqP0fQ_Q" role="39821P">
-        <ref role="m_rDy" node="1CcWqP0fLph" resolve="headlessInterpreterSamplePlugin" />
+        <ref role="m_rDy" node="1CcWqP0fLph" resolve="testExecutionAndAggregationSamplePlugin" />
         <node concept="pUk6x" id="1CcWqP0fQ_W" role="pUk7w" />
       </node>
     </node>
     <node concept="m$_wf" id="1CcWqP0fLph" role="3989C9">
-      <property role="m$_wk" value="headlessInterpreterSamplePlugin" />
+      <property role="m$_wk" value="testExecutionAndAggregationSamplePlugin" />
       <node concept="3_J27D" id="1CcWqP0fLpj" role="m$_yQ">
         <node concept="3Mxwew" id="1CcWqP0fLq3" role="3MwsjC">
-          <property role="3MwjfP" value="headless-interpreter-sample" />
+          <property role="3MwjfP" value="test-execution-and-aggregation-sample" />
         </node>
       </node>
       <node concept="3_J27D" id="1CcWqP0fLpl" role="m_cZH">
         <node concept="3Mxwew" id="1CcWqP0fLq5" role="3MwsjC">
-          <property role="3MwjfP" value="headless-interpreter-sample" />
+          <property role="3MwjfP" value="test-execution-and-aggregation-sample" />
         </node>
       </node>
       <node concept="3_J27D" id="1CcWqP0fLpn" role="m$_w8">
@@ -312,7 +312,7 @@
         </node>
       </node>
       <node concept="m$f5U" id="1CcWqP0fLr2" role="m$_yh">
-        <ref role="m$f5T" node="42zbFMCVoYe" resolve="headless-interpreter-sample" />
+        <ref role="m$f5T" node="42zbFMCVoYe" resolve="test-execution-and-aggregation-sample" />
       </node>
       <node concept="m$_yC" id="1CcWqP0fLrL" role="m$_yJ">
         <ref role="m$_y1" to="ffeo:4k71ibbKLe8" resolve="jetbrains.mps.core" />
@@ -331,18 +331,18 @@
       </node>
     </node>
     <node concept="2G$12M" id="42zbFMCVoYe" role="3989C9">
-      <property role="TrG5h" value="headless-interpreter-sample" />
+      <property role="TrG5h" value="test-execution-and-aggregation-sample" />
       <node concept="1E1JtD" id="42zbFMCVoY7" role="2G$12L">
-        <property role="TrG5h" value="HeadlessInterpreterTest" />
+        <property role="TrG5h" value="TestExecutionSample" />
         <property role="3LESm3" value="74a9e6d4-8f18-490b-b23d-87169f2231eb" />
         <node concept="398BVA" id="7OdfyMW98Ae" role="3LF7KH">
           <ref role="398BVh" node="42zbFMCVp0j" resolve="path.modules" />
           <node concept="2Ry0Ak" id="7OdfyMW98Ak" role="iGT6I">
             <property role="2Ry0Am" value="languages" />
             <node concept="2Ry0Ak" id="7OdfyMW98Ap" role="2Ry0An">
-              <property role="2Ry0Am" value="HeadlessInterpreterTest" />
+              <property role="2Ry0Am" value="TestExecutionSample" />
               <node concept="2Ry0Ak" id="7OdfyMW98Au" role="2Ry0An">
-                <property role="2Ry0Am" value="HeadlessInterpreterTest.mpl" />
+                <property role="2Ry0Am" value="TestExecutionSample.mpl" />
               </node>
             </node>
           </node>
@@ -357,7 +357,7 @@
               <node concept="2Ry0Ak" id="7OdfyMW98AN" role="iGT6I">
                 <property role="2Ry0Am" value="languages" />
                 <node concept="2Ry0Ak" id="7OdfyMW98AO" role="2Ry0An">
-                  <property role="2Ry0Am" value="HeadlessInterpreterTest" />
+                  <property role="2Ry0Am" value="TestExecutionSample" />
                   <node concept="2Ry0Ak" id="7OdfyMW98AP" role="2Ry0An">
                     <property role="2Ry0Am" value="models" />
                   </node>
@@ -370,7 +370,7 @@
           </node>
         </node>
         <node concept="1yeLz9" id="42zbFMCVoYD" role="1TViLv">
-          <property role="TrG5h" value="HeadlessInterpreterTest.generator" />
+          <property role="TrG5h" value="TestExecutionSample.generator" />
           <property role="3LESm3" value="6176824c-2f10-4bac-b0a1-5e91e993eb73" />
           <node concept="1BupzO" id="42zbFMCVoYJ" role="3bR31x">
             <property role="3ZfqAx" value="generator/templates" />
@@ -382,7 +382,7 @@
                 <node concept="2Ry0Ak" id="7OdfyMW98B3" role="iGT6I">
                   <property role="2Ry0Am" value="languages" />
                   <node concept="2Ry0Ak" id="7OdfyMW98B4" role="2Ry0An">
-                    <property role="2Ry0Am" value="HeadlessInterpreterTest" />
+                    <property role="2Ry0Am" value="TestExecutionSample" />
                     <node concept="2Ry0Ak" id="7OdfyMW98B5" role="2Ry0An">
                       <property role="2Ry0Am" value="generator" />
                       <node concept="2Ry0Ak" id="7OdfyMW98B6" role="2Ry0An">
@@ -415,7 +415,7 @@
               <node concept="2Ry0Ak" id="1CcWqP0fQAb" role="iGT6I">
                 <property role="2Ry0Am" value="languages" />
                 <node concept="2Ry0Ak" id="1CcWqP0fQAc" role="2Ry0An">
-                  <property role="2Ry0Am" value="HeadlessInterpreterTest" />
+                  <property role="2Ry0Am" value="TestExecutionSample" />
                 </node>
               </node>
             </node>
@@ -442,29 +442,29 @@
       </node>
       <node concept="1E1JtA" id="39SMJW1fpJc" role="2G$12L">
         <property role="3LESm3" value="7917daeb-6bc2-489a-b004-89f2dbde61f9" />
-        <property role="TrG5h" value="HeadlessInterpreterTest.interpreter" />
+        <property role="TrG5h" value="TestExecutionSample.interpreter" />
         <node concept="398BVA" id="39SMJW1fpJd" role="3LF7KH">
           <ref role="398BVh" node="42zbFMCVp0j" resolve="path.modules" />
           <node concept="2Ry0Ak" id="39SMJW1fpJe" role="iGT6I">
             <property role="2Ry0Am" value="solutions" />
             <node concept="2Ry0Ak" id="39SMJW1fpJf" role="2Ry0An">
-              <property role="2Ry0Am" value="HeadlessInterpreterTest.interpreter" />
+              <property role="2Ry0Am" value="TestExecutionSample.interpreter" />
               <node concept="2Ry0Ak" id="39SMJW1fpJg" role="2Ry0An">
-                <property role="2Ry0Am" value="HeadlessInterpreterTest.interpreter.msd" />
+                <property role="2Ry0Am" value="TestExecutionSample.interpreter.msd" />
               </node>
             </node>
           </node>
         </node>
         <node concept="1SiIV0" id="39SMJW1fpJl" role="3bR37C">
           <node concept="3bR9La" id="39SMJW1fpJm" role="1SiIV1">
-            <ref role="3bR37D" node="42zbFMCVoY7" resolve="HeadlessInterpreterTest" />
+            <ref role="3bR37D" node="42zbFMCVoY7" resolve="TestExecutionSample" />
           </node>
         </node>
       </node>
     </node>
   </node>
   <node concept="1l3spW" id="39SMJW1fpJo">
-    <property role="TrG5h" value="headless-interpreter-sample.interpreted.no.build.tests" />
+    <property role="TrG5h" value="test-execution-and-aggregation-sample.interpreted.no.build.tests" />
     <property role="turDy" value="run-interpreted-no-build-tests.xml" />
     <property role="2DA0ip" value="../../.." />
     <node concept="3b7kt6" id="39SMJW1fpJp" role="10PD9s" />
@@ -566,7 +566,7 @@
         <node concept="2Ry0Ak" id="39SMJW1fpJZ" role="iGT6I">
           <property role="2Ry0Am" value="solutions" />
           <node concept="2Ry0Ak" id="39SMJW1fpK0" role="2Ry0An">
-            <property role="2Ry0Am" value="HeadlessInterpreterTest.tests" />
+            <property role="2Ry0Am" value="TestExecutionSample.tests" />
           </node>
         </node>
       </node>
@@ -585,7 +585,7 @@
     <node concept="1l3spV" id="39SMJW1fpK6" role="1l3spN" />
   </node>
   <node concept="1l3spW" id="XynSM2zaN9">
-    <property role="TrG5h" value="headless-interpreter-sample.interpreted.lang.build.tests" />
+    <property role="TrG5h" value="test-execution-and-aggregation-sample.interpreted.lang.build.tests" />
     <property role="turDy" value="run-interpreted-lang-build-tests.xml" />
     <property role="2DA0ip" value="../../.." />
     <node concept="3b7kt6" id="XynSM2zaNa" role="10PD9s" />
@@ -687,7 +687,7 @@
         <node concept="2Ry0Ak" id="XynSM2zaNG" role="iGT6I">
           <property role="2Ry0Am" value="solutions" />
           <node concept="2Ry0Ak" id="XynSM2zaNH" role="2Ry0An">
-            <property role="2Ry0Am" value="HeadlessInterpreterTest.languageTests" />
+            <property role="2Ry0Am" value="TestExecutionSample.languageTests" />
           </node>
         </node>
       </node>
@@ -703,25 +703,25 @@
         <ref role="24YFd6" to="ffeo:1jjxZP6JyD_" resolve="jetbrains.mps.console" />
       </node>
       <node concept="24YFd5" id="XynSM2zaNR" role="5id3f">
-        <ref role="24YFd6" node="1CcWqP0fLph" resolve="headlessInterpreterSamplePlugin" />
+        <ref role="24YFd6" node="1CcWqP0fLph" resolve="testExecutionAndAggregationSamplePlugin" />
       </node>
     </node>
     <node concept="1l3spV" id="XynSM2zaNM" role="1l3spN" />
     <node concept="2sgV4H" id="XynSM2zaNN" role="1l3spa">
-      <ref role="1l3spb" node="42zbFMCVoXW" resolve="headless-interpreter-sample" />
+      <ref role="1l3spb" node="42zbFMCVoXW" resolve="test-execution-and-aggregation-sample" />
       <node concept="398BVA" id="XynSM2zaNO" role="2JcizS">
         <ref role="398BVh" node="XynSM2zaNi" resolve="path.build" />
         <node concept="2Ry0Ak" id="XynSM2zaNP" role="iGT6I">
           <property role="2Ry0Am" value="artifacts" />
           <node concept="2Ry0Ak" id="XynSM2zaNQ" role="2Ry0An">
-            <property role="2Ry0Am" value="headless-interpreter-sample" />
+            <property role="2Ry0Am" value="test-execution-and-aggregation-sample" />
           </node>
         </node>
       </node>
     </node>
   </node>
   <node concept="1l3spW" id="1k6Zbp5XNAx">
-    <property role="TrG5h" value="headless-interpreter-sample.interpreted.failing.tests" />
+    <property role="TrG5h" value="test-execution-and-aggregation-sample.interpreted.failing.tests" />
     <property role="turDy" value="run-interpreted-failing-tests.xml" />
     <property role="2DA0ip" value="../../.." />
     <node concept="3b7kt6" id="1k6Zbp5XNAy" role="10PD9s" />
@@ -823,7 +823,7 @@
         <node concept="2Ry0Ak" id="1k6Zbp5XNB4" role="iGT6I">
           <property role="2Ry0Am" value="solutions" />
           <node concept="2Ry0Ak" id="1k6Zbp5XNB5" role="2Ry0An">
-            <property role="2Ry0Am" value="HeadlessInterpreterTest.failingTests" />
+            <property role="2Ry0Am" value="TestExecutionSample.failingTests" />
           </node>
         </node>
       </node>
@@ -844,7 +844,7 @@
   <node concept="1l3spW" id="5QhCJKkGzR6">
     <property role="2DA0ip" value="../../.." />
     <property role="turDy" value="run-generated-tests.xml" />
-    <property role="TrG5h" value="headless-interpreter-sample.generated.tests" />
+    <property role="TrG5h" value="test-execution-and-aggregation-sample.generated.tests" />
     <node concept="10PD9b" id="5QhCJKkGzSr" role="10PD9s" />
     <node concept="3b7kt6" id="5QhCJKkGzSs" role="10PD9s" />
     <node concept="1gjT0q" id="5QhCJKkGzSt" role="10PD9s" />
@@ -940,7 +940,7 @@
     <node concept="2G$12M" id="5QhCJKkGzSW" role="3989C9">
       <property role="TrG5h" value="generated-tests" />
       <node concept="1E1JtA" id="5QhCJKkGzSX" role="2G$12L">
-        <property role="TrG5h" value="HeadlessInterpreterTest.generatedTests" />
+        <property role="TrG5h" value="TestExecutionSample.generatedTests" />
         <property role="3LESm3" value="89cb22d0-5836-43d6-852d-48099f0280d7" />
         <property role="aoJFB" value="sources_and_tests" />
         <node concept="398BVA" id="5QhCJKkGzSY" role="3LF7KH">
@@ -948,9 +948,9 @@
           <node concept="2Ry0Ak" id="5QhCJKkGzSZ" role="iGT6I">
             <property role="2Ry0Am" value="solutions" />
             <node concept="2Ry0Ak" id="5QhCJKkGzT0" role="2Ry0An">
-              <property role="2Ry0Am" value="HeadlessInterpreterTest.generatedTests" />
+              <property role="2Ry0Am" value="TestExecutionSample.generatedTests" />
               <node concept="2Ry0Ak" id="5QhCJKkGzT1" role="2Ry0An">
-                <property role="2Ry0Am" value="HeadlessInterpreterTest.generatedTests.msd" />
+                <property role="2Ry0Am" value="TestExecutionSample.generatedTests.msd" />
               </node>
             </node>
           </node>
@@ -965,7 +965,7 @@
               <node concept="2Ry0Ak" id="5QhCJKkGDo7" role="iGT6I">
                 <property role="2Ry0Am" value="solutions" />
                 <node concept="2Ry0Ak" id="5QhCJKkGDo8" role="2Ry0An">
-                  <property role="2Ry0Am" value="HeadlessInterpreterTest.generatedTests" />
+                  <property role="2Ry0Am" value="TestExecutionSample.generatedTests" />
                   <node concept="2Ry0Ak" id="5QhCJKkGDo9" role="2Ry0An">
                     <property role="2Ry0Am" value="models" />
                   </node>
@@ -982,7 +982,7 @@
     <node concept="22LTRH" id="5QhCJKkGzT2" role="1hWBAP">
       <property role="TrG5h" value="tests" />
       <node concept="22LTRM" id="5QhCJKkGzT3" role="22LTRK">
-        <ref role="22LTRN" node="5QhCJKkGzSX" resolve="HeadlessInterpreterTest.generatedTests" />
+        <ref role="22LTRN" node="5QhCJKkGzSX" resolve="TestExecutionSample.generatedTests" />
       </node>
       <node concept="24cAiW" id="5QhCJKkGzT4" role="24cAkG">
         <node concept="398BVA" id="5QhCJKkGDnT" role="3l6Mlw">
@@ -1003,14 +1003,14 @@
     </node>
     <node concept="1l3spV" id="5QhCJKkGzT6" role="1l3spN">
       <node concept="L2wRC" id="5QhCJKkGIUC" role="39821P">
-        <ref role="L2wRA" node="5QhCJKkGzSX" resolve="HeadlessInterpreterTest.generatedTests" />
+        <ref role="L2wRA" node="5QhCJKkGzSX" resolve="TestExecutionSample.generatedTests" />
       </node>
     </node>
   </node>
   <node concept="1l3spW" id="5QhCJKkGzRK">
     <property role="2DA0ip" value="../../.." />
     <property role="turDy" value="run-generated-failing-tests.xml" />
-    <property role="TrG5h" value="headless-interpreter-sample.generated.failing.tests" />
+    <property role="TrG5h" value="test-execution-and-aggregation-sample.generated.failing.tests" />
     <node concept="10PD9b" id="5QhCJKkGzZ1" role="10PD9s" />
     <node concept="3b7kt6" id="5QhCJKkGzZ2" role="10PD9s" />
     <node concept="1gjT0q" id="5QhCJKkGzZ3" role="10PD9s" />
@@ -1106,7 +1106,7 @@
     <node concept="2G$12M" id="5QhCJKkGzZy" role="3989C9">
       <property role="TrG5h" value="generated-failing-tests" />
       <node concept="1E1JtA" id="5QhCJKkGzZz" role="2G$12L">
-        <property role="TrG5h" value="HeadlessInterpreterTest.generatedFailingTests" />
+        <property role="TrG5h" value="TestExecutionSample.generatedFailingTests" />
         <property role="3LESm3" value="12a928cc-f397-4dce-b3cf-58d8b4fef39c" />
         <property role="aoJFB" value="sources_and_tests" />
         <node concept="398BVA" id="5QhCJKkGzZ$" role="3LF7KH">
@@ -1114,9 +1114,9 @@
           <node concept="2Ry0Ak" id="5QhCJKkGzZ_" role="iGT6I">
             <property role="2Ry0Am" value="solutions" />
             <node concept="2Ry0Ak" id="5QhCJKkGzZA" role="2Ry0An">
-              <property role="2Ry0Am" value="HeadlessInterpreterTest.generatedFailingTests" />
+              <property role="2Ry0Am" value="TestExecutionSample.generatedFailingTests" />
               <node concept="2Ry0Ak" id="5QhCJKkGzZB" role="2Ry0An">
-                <property role="2Ry0Am" value="HeadlessInterpreterTest.generatedFailingTests.msd" />
+                <property role="2Ry0Am" value="TestExecutionSample.generatedFailingTests.msd" />
               </node>
             </node>
           </node>
@@ -1131,7 +1131,7 @@
               <node concept="2Ry0Ak" id="5QhCJKkGDoe" role="iGT6I">
                 <property role="2Ry0Am" value="solutions" />
                 <node concept="2Ry0Ak" id="5QhCJKkGDof" role="2Ry0An">
-                  <property role="2Ry0Am" value="HeadlessInterpreterTest.generatedFailingTests" />
+                  <property role="2Ry0Am" value="TestExecutionSample.generatedFailingTests" />
                   <node concept="2Ry0Ak" id="5QhCJKkGDog" role="2Ry0An">
                     <property role="2Ry0Am" value="models" />
                   </node>
@@ -1148,7 +1148,7 @@
     <node concept="22LTRH" id="5QhCJKkGzZC" role="1hWBAP">
       <property role="TrG5h" value="tests" />
       <node concept="22LTRM" id="5QhCJKkGzZD" role="22LTRK">
-        <ref role="22LTRN" node="5QhCJKkGzZz" resolve="HeadlessInterpreterTest.generatedFailingTests" />
+        <ref role="22LTRN" node="5QhCJKkGzZz" resolve="TestExecutionSample.generatedFailingTests" />
       </node>
       <node concept="24cAiW" id="5QhCJKkGzZE" role="24cAkG">
         <node concept="398BVA" id="5QhCJKkGDnZ" role="3l6Mlw">
@@ -1169,7 +1169,7 @@
     </node>
     <node concept="1l3spV" id="5QhCJKkGzZG" role="1l3spN">
       <node concept="L2wRC" id="5QhCJKkGIUD" role="39821P">
-        <ref role="L2wRA" node="5QhCJKkGzZz" resolve="HeadlessInterpreterTest.generatedFailingTests" />
+        <ref role="L2wRA" node="5QhCJKkGzZz" resolve="TestExecutionSample.generatedFailingTests" />
       </node>
     </node>
   </node>

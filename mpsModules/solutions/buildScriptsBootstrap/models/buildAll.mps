@@ -84,7 +84,7 @@
     </language>
   </registry>
   <node concept="1l3spW" id="7OdfyMW98C8">
-    <property role="TrG5h" value="headless-interpreter-sample" />
+    <property role="TrG5h" value="test-execution-and-aggregation-sample" />
     <property role="2DA0ip" value="../../.." />
     <property role="turDy" value="buildAll.xml" />
     <node concept="10PD9b" id="7OdfyMW98C9" role="10PD9s" />
@@ -168,7 +168,7 @@
     </node>
     <node concept="1l3spV" id="7OdfyMW98Cy" role="1l3spN" />
     <node concept="2G$12M" id="7OdfyMW98Ck" role="3989C9">
-      <property role="TrG5h" value="headless-interpreter-sample" />
+      <property role="TrG5h" value="test-execution-and-aggregation-sample" />
       <node concept="1E1JtA" id="7OdfyMW98Cj" role="2G$12L">
         <property role="TrG5h" value="build" />
         <property role="3LESm3" value="d6a91167-3619-421b-9d02-97167e485fe7" />

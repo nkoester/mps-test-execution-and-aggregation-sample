@@ -5,4 +5,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = "headless-interpreter-sample"
+rootProject.name = "test-execution-and-aggregation-sample"

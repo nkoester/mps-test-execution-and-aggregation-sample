@@ -153,25 +153,25 @@ fun TestLanguages.runMpsTests(
 // the interpreter test scripts have no 'check' target; their 'build' runs the interpreter
 val interpreterTestTargets = listOf("clean", "generate", "build")
 
-// Case 1 - no build needed: the tests in HeadlessInterpreterTest.tests are plain user models written
+// Case 1 - no build needed: the tests in TestExecutionSample.tests are plain user models written
 // with published iets3 languages only. They are loaded straight from their source folder and
 // interpreted; nothing of this project is generated or compiled. Only the ant script itself is
 // generated from the build model (buildScripts), as it is not checked in.
 val runInterpretedTests = tasks.register<TestLanguages>("runInterpretedTests") {
     dependsOn(buildScripts)
-    description = "Interpret the user-model tests (HeadlessInterpreterTest.tests) without building anything."
+    description = "Interpret the user-model tests (TestExecutionSample.tests) without building anything."
     runMpsTests(
         "run-interpreted-no-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-no-build"),
         antTargets = interpreterTestTargets,
     )
 }
 
-// Case 2 - own language: the tests in HeadlessInterpreterTest.languageTests use the project's own
-// language (HeadlessInterpreterTest) and its interpreter. These must be compiled, so the language
-// plugin is built first and loaded from build/artifacts/headless-interpreter-sample.
+// Case 2 - own language: the tests in TestExecutionSample.languageTests use the project's own
+// language (TestExecutionSample) and its interpreter. These must be compiled, so the language
+// plugin is built first and loaded from build/artifacts/test-execution-and-aggregation-sample.
 val runInterpretedLanguageTests = tasks.register<TestLanguages>("runInterpretedLanguageTests") {
     dependsOn(buildLanguages)
-    description = "Build the project's language and interpret the tests that use it (HeadlessInterpreterTest.languageTests)."
+    description = "Build the project's language and interpret the tests that use it (TestExecutionSample.languageTests)."
     runMpsTests(
         "run-interpreted-lang-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-lang-build"),
         antTargets = interpreterTestTargets,
@@ -199,24 +199,24 @@ tasks.check {
     dependsOn(runInterpretedTests, runInterpretedLanguageTests, checkModels)
 }
 
-// Demo of a failing run - not part of 'check'. HeadlessInterpreterTest.failingTests contains a test that fails
+// Demo of a failing run - not part of 'check'. TestExecutionSample.failingTests contains a test that fails
 // on purpose; the task fails and the report shows the failure with its node URL and the nodeRef properties.
-tasks.register<TestLanguages>("runFailingInterpretedTests") {
+val runFailingInterpretedTests = tasks.register<TestLanguages>("runFailingInterpretedTests") {
     dependsOn(buildScripts)
-    description = "Interpret HeadlessInterpreterTest.failingTests, which contains a broken test - this task is expected to fail."
+    description = "Interpret TestExecutionSample.failingTests, which contains a broken test - this task is expected to fail."
     runMpsTests(
         "run-interpreted-failing-tests.xml", layout.buildDirectory.dir("test-results/interpreted-failing"),
         antTargets = interpreterTestTargets,
     )
 }
 
-// Case 3 - generated tests: the tests in HeadlessInterpreterTest.generatedTests (published iets3 languages only)
+// Case 3 - generated tests: the tests in TestExecutionSample.generatedTests (published iets3 languages only)
 // are generated to JUnit test classes, compiled and run in a headless MPS by MPS' module tests.
 val generatedTestResults = "**/TEST-*.xml"
 
 val runGeneratedTests = tasks.register<TestLanguages>("runGeneratedTests") {
     dependsOn(buildScripts)
-    description = "Generate, compile and run the tests in HeadlessInterpreterTest.generatedTests as JUnit tests."
+    description = "Generate, compile and run the tests in TestExecutionSample.generatedTests as JUnit tests."
     runMpsTests(
         "run-generated-tests.xml", layout.buildDirectory.dir("test-results/generated"),
         generatedTestResults,
@@ -227,15 +227,23 @@ tasks.check {
     dependsOn(runGeneratedTests)
 }
 
-// Demo of a failing generated run - not part of 'check'. HeadlessInterpreterTest.generatedFailingTests contains
+// Demo of a failing generated run - not part of 'check'. TestExecutionSample.generatedFailingTests contains
 // a passing and a broken test; the task is expected to fail.
-tasks.register<TestLanguages>("runFailingGeneratedTests") {
+val runFailingGeneratedTests = tasks.register<TestLanguages>("runFailingGeneratedTests") {
     dependsOn(buildScripts)
-    description = "Generate and run HeadlessInterpreterTest.generatedFailingTests, which contains a broken test - this task is expected to fail."
+    description = "Generate and run TestExecutionSample.generatedFailingTests, which contains a broken test - this task is expected to fail."
     runMpsTests(
         "run-generated-failing-tests.xml", layout.buildDirectory.dir("test-results/generated-failing"),
         generatedTestResults,
     )
+}
+
+// All test tasks including the failing demos. Run with --continue, otherwise Gradle stops at the first failing
+// task: ./gradlew --continue runAllTests (fails by design, as the demos fail)
+tasks.register("runAllTests") {
+    group = "verification"
+    description = "Run all tests and model checks, including the failing demos - use with --continue."
+    dependsOn(tasks.check, runFailingInterpretedTests, runFailingGeneratedTests)
 }
 
 tasks.assemble {
