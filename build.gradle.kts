@@ -46,17 +46,32 @@ dependencies {
     mpsDependencies(libs.mps.iets3.opensource)
 }
 
+// Extraction is skipped when the target already holds the same artifacts, e.g. restored from the CI cache.
+// Gradle's own up-to-date check cannot detect that, as its task history (.gradle/) is not part of that cache.
+fun Task.skipIfExtracted(targetDir: File, id: String) {
+    val marker = targetDir.resolve(".extracted")
+    onlyIf("$targetDir does not contain $id yet") { !(marker.isFile && marker.readText() == id) }
+    doLast { marker.writeText(id) }
+}
+
+fun Configuration.fingerprint() = dependencies.joinToString(",") { "${it.group}:${it.name}:${it.version}" }
+
+tasks.named("extractJbr") {
+    skipIfExtracted(file("$buildPath/jbrDownload"), "jbr:${libs.versions.jbr.get()}")
+}
 
 val extractMps = tasks.register<Copy>("extractMps") {
     dependsOn("extractJbr")
     from({ mps.resolve().map { zipTree(it) } })
     into(mpsGenericPath)
+    skipIfExtracted(mpsGenericPath.toFile(), mps.fingerprint())
 }
 
 val extractMpsDependencies = tasks.register<Copy>("extractMpsDependencies") {
     dependsOn(extractMps)
     from({ mpsDependencies.resolve().map { zipTree(it) } })
     into(dependencyInstallPath)
+    skipIfExtracted(dependencyInstallPath.toFile(), mpsDependencies.fingerprint())
 }
 
 val setup = tasks.register("setup") {
