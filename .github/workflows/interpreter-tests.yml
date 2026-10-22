@@ -163,10 +163,8 @@ jobs:
 
       # -PprebuiltBuildScripts skips buildScripts; its dependencies (setup) still run.
       # xvfb-run: the generated tests' launchtests starts an IdeaEnvironment, which needs an X11 display
-      # demo tasks fail by design; 'Verify expected failure' decides the job result instead
       - name: Run ${{ matrix.task }}
         id: gradle
-        continue-on-error: ${{ matrix.expectFailure }}
         run: xvfb-run -a ./gradlew --no-daemon --stacktrace -PprebuiltBuildScripts ${{ matrix.task }}
 
       # file names keep buildScripts first, then the matrix order
@@ -194,7 +192,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # a demo task must fail, and because of failing tests (not a crash or a broken build)
+      # demo jobs fail by design; this step additionally fails them if the task passed
+      # or failed without failing tests (a crash or a broken build)
       - name: Verify expected failure
         if: ${{ matrix.expectFailure && !cancelled() }}
         env:
@@ -251,7 +250,7 @@ jobs:
           } > "$RUNNER_TEMP/gradle-runs.md"
 
       # The only job summary of the run, so the test results come first, then the Gradle runs
-      # no check run: it would fail on the demo failures; the test jobs carry the build status
+      # no check run: the test jobs already carry the build status
       - uses: ./.github/actions/mps-test-report
         with:
           append-markdown: ${{ runner.temp }}/gradle-runs.md
