@@ -77,3 +77,4 @@ TESTS-*.xml
 # -----------------------------------------------------------
 /build.xml
 /run-interpreted-*.xml
+/run-generated-*.xml

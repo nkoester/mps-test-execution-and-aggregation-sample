@@ -1,5 +1,6 @@
 import de.itemis.mps.gradle.BuildLanguages
 import de.itemis.mps.gradle.RunAntScript
+import de.itemis.mps.gradle.TestLanguages
 import de.itemis.mps.gradle.tasks.MpsCheck
 import kotlin.io.path.Path
 
@@ -107,58 +108,74 @@ val buildLanguages = tasks.register<BuildLanguages>("buildLanguages") {
     script = "build.xml"
 }
 
-// Interpreter tests are run headless by iets3's interpreterExecutor via ant scripts generated from the
-// build model. Each task aggregates the JUnit results into <resultsDir>/html and fails on test failures.
-fun BuildLanguages.runInterpreterTests(antScript: String, resultsDir: Provider<Directory>) {
+// Tests are run headless via ant scripts generated from the build model: interpreter tests by iets3's
+// interpreterExecutor, generated tests by MPS' module tests (JUnit). Each task aggregates the JUnit results
+// (resultFiles) into <resultsDir>/html and fails on test failures.
+// Without antTargets, TestLanguages' defaults (clean, generate, assemble, check) apply. 'clean' drops the MPS
+// system dir of the previous run: its cached file contents would otherwise hide model changes made since then
+// (headless MPS does not refresh them on startup).
+fun TestLanguages.runMpsTests(
+    antScript: String,
+    resultsDir: Provider<Directory>,
+    resultFiles: String = "**/InterpreterTestSuite*.xml",
+    antTargets: List<String>? = null,
+) {
     group = "verification"
     script = antScript
-    // 'clean' drops the MPS system dir of the previous run: its cached file contents would otherwise hide
-    // model changes made since then (headless MPS does not refresh them on startup)
-    targets("clean", "generate", "build")
+    antTargets?.let { targets(*it.toTypedArray()) }
     doFirst { delete(resultsDir) }
     doLast {
         val results = resultsDir.get().asFile
         ant.withGroovyBuilder {
             "taskdef"(
-                "name" to "junitInterpreterReport",
+                "name" to "junitMpsReport",
                 "classname" to "org.apache.tools.ant.taskdefs.optional.junit.XMLResultAggregator",
                 "classpath" to junit.asPath
             )
-            "junitInterpreterReport"("toDir" to results) {
-                "fileset"("dir" to results, "includes" to "**/InterpreterTestSuite*.xml")
+            "junitMpsReport"("toDir" to results) {
+                "fileset"("dir" to results, "includes" to resultFiles)
                 "report"("format" to "frames", "todir" to "$results/html")
             }
         }
         val summary = results.resolve("TESTS-TestSuites.xml").readText()
-        // The executor only logs (and runs nothing) when it is misconfigured, e.g. when no output folder
-        // reaches it - so an empty report must fail, too.
+        // The runners only log (and run nothing) when they are misconfigured, e.g. when no output folder
+        // reaches them - so an empty report must fail, too.
         if (!summary.contains("<testsuite ")) {
-            throw GradleException("No interpreter test results in $results - check the ant output for executor errors")
+            throw GradleException("No test results in $results - check the ant output for runner errors")
         }
         if (Regex("""<testsuite [^>]*(failures|errors)="[1-9]""").containsMatchIn(summary)) {
-            throw GradleException("Interpreter tests failed, see file://$results/html/index.html")
+            throw GradleException("Tests failed, see file://$results/html/index.html")
         }
-        logger.lifecycle("Interpreter test report: file://$results/html/index.html")
+        logger.lifecycle("Test report: file://$results/html/index.html")
     }
 }
+
+// the interpreter test scripts have no 'check' target; their 'build' runs the interpreter
+val interpreterTestTargets = listOf("clean", "generate", "build")
 
 // Case 1 - no build needed: the tests in HeadlessInterpreterTest.tests are plain user models written
 // with published iets3 languages only. They are loaded straight from their source folder and
 // interpreted; nothing of this project is generated or compiled. Only the ant script itself is
 // generated from the build model (buildScripts), as it is not checked in.
-val runInterpretedTests = tasks.register<BuildLanguages>("runInterpretedTests") {
+val runInterpretedTests = tasks.register<TestLanguages>("runInterpretedTests") {
     dependsOn(buildScripts)
     description = "Interpret the user-model tests (HeadlessInterpreterTest.tests) without building anything."
-    runInterpreterTests("run-interpreted-no-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-no-build"))
+    runMpsTests(
+        "run-interpreted-no-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-no-build"),
+        antTargets = interpreterTestTargets,
+    )
 }
 
 // Case 2 - own language: the tests in HeadlessInterpreterTest.languageTests use the project's own
 // language (HeadlessInterpreterTest) and its interpreter. These must be compiled, so the language
 // plugin is built first and loaded from build/artifacts/headless-interpreter-sample.
-val runInterpretedLanguageTests = tasks.register<BuildLanguages>("runInterpretedLanguageTests") {
+val runInterpretedLanguageTests = tasks.register<TestLanguages>("runInterpretedLanguageTests") {
     dependsOn(buildLanguages)
     description = "Build the project's language and interpret the tests that use it (HeadlessInterpreterTest.languageTests)."
-    runInterpreterTests("run-interpreted-lang-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-lang-build"))
+    runMpsTests(
+        "run-interpreted-lang-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-lang-build"),
+        antTargets = interpreterTestTargets,
+    )
 }
 
 // Model checking of the whole MPS project. The project's own language must be compiled (classes_gen) for its
@@ -184,10 +201,41 @@ tasks.check {
 
 // Demo of a failing run - not part of 'check'. HeadlessInterpreterTest.failingTests contains a test that fails
 // on purpose; the task fails and the report shows the failure with its node URL and the nodeRef properties.
-tasks.register<BuildLanguages>("runFailingInterpretedTests") {
+tasks.register<TestLanguages>("runFailingInterpretedTests") {
     dependsOn(buildScripts)
     description = "Interpret HeadlessInterpreterTest.failingTests, which contains a broken test - this task is expected to fail."
-    runInterpreterTests("run-interpreted-failing-tests.xml", layout.buildDirectory.dir("test-results/interpreted-failing"))
+    runMpsTests(
+        "run-interpreted-failing-tests.xml", layout.buildDirectory.dir("test-results/interpreted-failing"),
+        antTargets = interpreterTestTargets,
+    )
+}
+
+// Case 3 - generated tests: the tests in HeadlessInterpreterTest.generatedTests (published iets3 languages only)
+// are generated to JUnit test classes, compiled and run in a headless MPS by MPS' module tests.
+val generatedTestResults = "**/TEST-*.xml"
+
+val runGeneratedTests = tasks.register<TestLanguages>("runGeneratedTests") {
+    dependsOn(buildScripts)
+    description = "Generate, compile and run the tests in HeadlessInterpreterTest.generatedTests as JUnit tests."
+    runMpsTests(
+        "run-generated-tests.xml", layout.buildDirectory.dir("test-results/generated"),
+        generatedTestResults,
+    )
+}
+
+tasks.check {
+    dependsOn(runGeneratedTests)
+}
+
+// Demo of a failing generated run - not part of 'check'. HeadlessInterpreterTest.generatedFailingTests contains
+// a passing and a broken test; the task is expected to fail.
+tasks.register<TestLanguages>("runFailingGeneratedTests") {
+    dependsOn(buildScripts)
+    description = "Generate and run HeadlessInterpreterTest.generatedFailingTests, which contains a broken test - this task is expected to fail."
+    runMpsTests(
+        "run-generated-failing-tests.xml", layout.buildDirectory.dir("test-results/generated-failing"),
+        generatedTestResults,
+    )
 }
 
 tasks.assemble {

@@ -8,9 +8,13 @@ e.g. test-results-interpreted-no-build. Known categories are listed in CATEGORIE
 under their raw name. Each directory holds InterpreterTestSuite*.xml (interpreter tests) or
 TEST-*.xml (JUnit/Surefire, model checker) files.
 
-Node links are taken from the testsuite properties 'nodeRef.<testcase name>' (falling back to
-'nodeRef') or from a node URL '[http://<host>:<port>/node?ref=<ref>]' in the failure message. They
-open the node in a running MPS via its HTTP support plugin.
+Node links are taken from, in this order:
+  1. the property 'nodeRef.<testcase name>', then 'nodeRef' (test case level before suite level)
+  2. a node URL 'http://<host>:<port>/node?ref=<ref>' (optionally in brackets) in the failure message,
+     then in the failure text
+Interpreter tests provide 1, the model checker 2 (message). Generated tests have no node reference yet;
+once their matchers append the node URL to the description (2), they get links without changes here.
+Links open the node in a running MPS via its HTTP support plugin.
 """
 import re
 import sys
@@ -23,17 +27,27 @@ STATUSES = ("passed", "failed", "error", "skipped")
 ICONS = {"passed": "✅", "failed": "❌", "error": "💥", "skipped": "⏭️"}
 # TESTS-TestSuites.xml (ant junitreport aggregate) intentionally does not match
 RESULT_FILES = ("InterpreterTestSuite*.xml", "TEST-*.xml")
-NODE_URL = re.compile(r"https?://\S+/node\?ref=[^\s\]]+")
+NODE_URL = re.compile(r"https?://[^\s\]]+/node\?ref=[^\s\]]+")
+# a node URL, optionally in brackets, as appended to failure messages
+NODE_URL_SUFFIX = re.compile(r"\s*\[?https?://[^\s\]]+/node\?ref=[^\s\]]+\]?")
 
 
-def ref_from_message(message: str) -> str | None:
-    match = NODE_URL.search(message)
-    return parse_qs(urlparse(match.group(0)).query).get("ref", [None])[0] if match else None
+def ref_from_text(*texts: str) -> str | None:
+    for text in texts:
+        if match := NODE_URL.search(text):
+            return parse_qs(urlparse(match.group(0)).query).get("ref", [None])[0]
+    return None
+
+
+def properties(element: ET.Element) -> dict[str, str]:
+    # only the element's own <properties>, not those of nested test cases
+    block = element.find("properties")
+    return {p.get("name"): p.get("value") for p in block.iter("property")} if block is not None else {}
 
 
 def md(text: str, limit: int = 300) -> str:
-    # failure messages end with the node URL; it is already in the Node column
-    text = re.sub(r"\s*\[https?://\S+/node\?ref=\S+\]\s*$", "", " ".join(text.split()))
+    # node URLs in messages are already in the Node column
+    text = NODE_URL_SUFFIX.sub("", " ".join(text.split())).strip()
     if len(text) > limit:
         text = text[: limit - 1] + "…"
     return text.replace("|", "\\|")
@@ -48,8 +62,9 @@ def node_url(base: str, case: dict) -> str:
         # model checker: classname is <root node presentation>.<node id>
         name = case["classname"].removesuffix("." + node_id)
     else:
-        # interpreter: test case names end with the node id, e.g. brokenOnPurpose_item0_1515176184444827057
-        name = case["name"].removesuffix("_" + node_id)
+        # interpreter/generated: test case names end with the node id, e.g. brokenOnPurpose_item0_1515176184444827057;
+        # JUnit 5 reports append the parameter list, e.g. brokenOnPurpose_item0_1515176184444827057()
+        name = re.sub(r"\(.*\)$", "", case["name"]).removesuffix("_" + node_id)
     name = md(name, 60).replace("[", "(").replace("]", ")")
     return f"[open {name} in MPS]({base}/node?ref={quote(ref, safe='')})"
 
@@ -57,16 +72,22 @@ def node_url(base: str, case: dict) -> str:
 def parse_file(path: Path):
     # interpreter results have a <testsuite> root, model checker results a <testsuites> root
     for suite in ET.parse(path).getroot().iter("testsuite"):
-        props = {p.get("name"): p.get("value") for p in suite.iter("property")}
+        suite_props = properties(suite)
         for case in suite.iter("testcase"):
             name = case.get("name", "")
-            status, message = "passed", ""
+            props = {**suite_props, **properties(case)}
+            status, message, detail = "passed", "", ""
             for tag in ("failure", "error", "skipped"):
                 el = case.find(tag)
                 if el is not None:
                     status = "failed" if tag == "failure" else tag
-                    message = el.get("message") or (el.text or "")
+                    detail = el.text or ""
+                    # without a message attribute, the first line of the text (usually the exception) stands in
+                    message = el.get("message") or detail.strip().split("\n", 1)[0]
                     break
+            # node reference: interpreter properties (suite or test case level), else a node URL in the failure
+            # message or text (model checker; generated tests once their matchers append it)
+            plain = re.sub(r"\(.*\)$", "", name)
             yield {
                 "suite": suite.get("name", path.stem),
                 "name": name,
@@ -74,7 +95,7 @@ def parse_file(path: Path):
                 "time": float(case.get("time") or 0),
                 "status": status,
                 "message": message,
-                "ref": props.get(f"nodeRef.{name}") or props.get("nodeRef") or ref_from_message(message),
+                "ref": props.get(f"nodeRef.{plain}") or props.get("nodeRef") or ref_from_text(message, detail),
             }
 
 
