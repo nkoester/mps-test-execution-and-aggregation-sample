@@ -1,5 +1,6 @@
 import de.itemis.mps.gradle.BuildLanguages
 import de.itemis.mps.gradle.RunAntScript
+import de.itemis.mps.gradle.tasks.MpsCheck
 import kotlin.io.path.Path
 
 buildscript {
@@ -15,7 +16,6 @@ plugins {
     base
     alias(libs.plugins.mps.downloadJBR)
 }
-
 // misc paths
 val buildPath = getLayout().buildDirectory.get().toString()
 val mpsGenericPath = Path(buildPath, "/mps")
@@ -35,6 +35,8 @@ downloadJbr {
 val mps: Configuration = configurations.create("mps")
 val junit: Configuration = configurations.create("junit")
 val mpsDependencies: Configuration = configurations.create("mpsDependencies")
+// model checker runtime used by MpsCheck, which looks it up by this name
+val modelcheckBackend: Configuration = configurations.create("modelcheckBackend")
 
 // dependencies
 dependencies {
@@ -44,6 +46,7 @@ dependencies {
     mpsDependencies(libs.mps.mbeddr.platform)
     mpsDependencies(libs.mps.extensions)
     mpsDependencies(libs.mps.iets3.opensource)
+    modelcheckBackend(libs.mps.modelcheckBackend)
 }
 
 // Extraction is skipped when the target already holds the same artifacts, e.g. restored from the CI cache.
@@ -56,12 +59,12 @@ fun Task.skipIfExtracted(targetDir: File, id: String) {
 
 fun Configuration.fingerprint() = dependencies.joinToString(",") { "${it.group}:${it.name}:${it.version}" }
 
-tasks.named("extractJbr") {
+tasks.extractJbr {
     skipIfExtracted(file("$buildPath/jbrDownload"), "jbr:${libs.versions.jbr.get()}")
 }
 
 val extractMps = tasks.register<Copy>("extractMps") {
-    dependsOn("extractJbr")
+    dependsOn(tasks.extractJbr)
     from({ mps.resolve().map { zipTree(it) } })
     into(mpsGenericPath)
     skipIfExtracted(mpsGenericPath.toFile(), mps.fingerprint())
@@ -158,8 +161,25 @@ val runInterpretedLanguageTests = tasks.register<BuildLanguages>("runInterpreted
     runInterpreterTests("run-interpreted-lang-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-lang-build"))
 }
 
+// Model checking of the whole MPS project. The project's own language must be compiled (classes_gen) for its
+// models to be checked, so the languages are built first. The dependencies are loaded via the project library
+// (mpsModules/.mps/libraries.xml -> build/dependencies).
+val checkModels = tasks.register<MpsCheck>("checkModels") {
+    dependsOn(buildLanguages)
+    description = "Run the MPS model checker on all modules of the project."
+    // same JBR as the ant tasks (downloadJbr); JavaExec rejects an executable that differs from its javaLauncher
+    javaLauncher.set(tasks.downloadJbr.flatMap { it.javaLauncher })
+    mpsHome.set(layout.dir(provider { mpsGenericPath.toFile() }))
+    projectLocation.set(layout.projectDirectory.dir("mpsModules"))
+    pluginRoots.add(mpsHome.dir("plugins"))
+    junitFile.set(layout.buildDirectory.file("test-results/checkmodels/TEST-checkModels.xml"))
+    // one test case per message
+    junitFormat.set("message")
+    maxHeapSize = "4G"
+}
+
 tasks.check {
-    dependsOn(runInterpretedTests, runInterpretedLanguageTests)
+    dependsOn(runInterpretedTests, runInterpretedLanguageTests, checkModels)
 }
 
 // Demo of a failing run - not part of 'check'. HeadlessInterpreterTest.failingTests contains a test that fails
@@ -175,7 +195,7 @@ tasks.assemble {
 }
 
 // all ant based tasks run with the downloaded JBR
-tasks.withType<RunAntScript>().configureEach { executable = tasks.getByName("downloadJbr").property("javaExecutable") }
+tasks.withType<RunAntScript>().configureEach { executable = tasks.downloadJbr.get().javaExecutable }
 
 // so that no task has to be specified when running gradle
 defaultTasks(buildLanguages.name)

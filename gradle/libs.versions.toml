@@ -2,6 +2,7 @@
 # plugins
 downloadJBRPlugin = "1.30.1.1.bc0f59d"
 mpsGradlePlugin = "1.30.1.1.bc0f59d"
+mpsBuildBackends = "1.27.4.239.aeb5185"
 
 # MPS / JBR
 jbr = "21.0.7-b895.130"
@@ -21,6 +22,7 @@ ant-junit = { group = "org.apache.ant", name = "ant-junit", version.ref = "antju
 
 mps = { group = "com.jetbrains", name = "mps", version.ref = "mps" }
 mps-gradlePlugin = { group = "de.itemis.mps", name = "mps-gradle-plugin", version.ref = "mpsGradlePlugin" }
+mps-modelcheckBackend = { group = "de.itemis.mps.build-backends", name = "modelcheck", version.ref = "mpsBuildBackends" }
 
 mps-extensions = { group = "de.itemis.mps", name = "extensions", version.ref = "mpsExtensions" }
 mps-mbeddr = { group = "com.mbeddr", name = "mbeddr", version.ref = "mbeddr" }

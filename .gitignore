@@ -70,3 +70,10 @@ code/languages/org.iets3.core/build/tmp
 # Test results
 TESTS-*.xml
 /system/
+
+# -----------------------------------------------------------
+# Ant scripts generated from the build model (buildScripts task)
+# buildAll.xml is not generated: it bootstraps the generation
+# -----------------------------------------------------------
+/build.xml
+/run-interpreted-*.xml

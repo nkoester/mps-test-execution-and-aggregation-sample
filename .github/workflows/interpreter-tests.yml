@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # JDK for Gradle itself; the ant/MPS tasks run on the JBR downloaded by the build
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -38,7 +38,10 @@ jobs:
       # caches the Gradle user home: wrapper, MPS, JBR and the MPS dependency zips.
       # This job resolves all downloads the test jobs need, so it is the only one writing the cache
       # (default branch only); the test jobs restore its entry.
+      # Its job summary is replaced by gradle_job_summary.py (adds MPS/dependency versions, no Build Scan column)
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          add-job-summary: never
 
       # extracted MPS, MPS dependencies and JBR; the build skips extraction when they are present
       - name: Restore extracted MPS
@@ -49,7 +52,23 @@ jobs:
           key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
 
       - name: Run buildScripts
+        id: gradle
         run: ./gradlew --no-daemon --stacktrace buildScripts
+
+      # recorded for the report job, which renders the single summary of the run
+      - name: Record Gradle run
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/summary"
+          python3 -I .github/scripts/gradle_job_summary.py row buildScripts "${{ steps.gradle.outcome }}" > "$RUNNER_TEMP/summary/0-buildScripts.md"
+
+      - name: Upload Gradle run
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: summary-buildScripts
+          path: ${{ runner.temp }}/summary/
+          retention-days: 1
 
       # same write policy as the Gradle cache: default branch only
       - name: Save extracted MPS
@@ -88,6 +107,10 @@ jobs:
           - task: runFailingInterpretedTests
             results: interpreted-failing
             expectFailure: true
+          # fails on model check errors; the report lists each error with its node link
+          - task: checkModels
+            results: checkmodels
+            expectFailure: false
     continue-on-error: ${{ matrix.expectFailure }}
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +119,7 @@ jobs:
         with:
           name: ant-scripts
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -104,6 +127,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: true
+          add-job-summary: never
 
       - name: Restore extracted MPS
         uses: actions/cache/restore@v4
@@ -113,7 +137,24 @@ jobs:
 
       # -PprebuiltBuildScripts skips buildScripts; its dependencies (setup) still run
       - name: Run ${{ matrix.task }}
+        id: gradle
         run: ./gradlew --no-daemon --stacktrace -PprebuiltBuildScripts ${{ matrix.task }}
+
+      # file names keep buildScripts first, then the matrix order
+      - name: Record Gradle run
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/summary"
+          python3 -I .github/scripts/gradle_job_summary.py row "${{ matrix.task }}" "${{ steps.gradle.outcome }}" \
+            > "$RUNNER_TEMP/summary/1-${{ strategy.job-index }}-${{ matrix.task }}.md"
+
+      - name: Upload Gradle run
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: summary-${{ matrix.task }}
+          path: ${{ runner.temp }}/summary/
+          retention-days: 1
 
       - name: Upload test results
         if: ${{ !cancelled() }}
@@ -140,12 +181,20 @@ jobs:
           pattern: test-results-*
           path: test-results
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: summary-*
+          path: summary
+          merge-multiple: true
+
       # Check run + annotations; pass/fail is decided by the test jobs (the failing demo is expected to fail)
       - name: Publish check run
         uses: mikepenz/action-junit-report@v5
         with:
-          check_name: Interpreter test results
-          report_paths: test-results/**/InterpreterTestSuite*.xml
+          check_name: Test results
+          report_paths: |
+            test-results/**/InterpreterTestSuite*.xml
+            test-results/**/TEST-checkModels.xml
           include_passed: true
           detailed_summary: true
           job_summary: false
@@ -154,6 +203,14 @@ jobs:
           # PRs from forks get a read-only token and cannot create check runs
           annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
 
-      # Job summary with links that open each test node in a locally running MPS
-      - name: Write summary with node links
-        run: python3 -I .github/scripts/interpreter_test_summary.py test-results >> "$GITHUB_STEP_SUMMARY"
+      # The only job summary of the run, so the test results come first: interpreter test and model check results
+      # with links that open each node in a locally running MPS, then the Gradle runs of all jobs
+      - name: Write summary
+        run: |
+          {
+            python3 -I .github/scripts/interpreter_test_summary.py test-results
+            echo "# Gradle runs"
+            echo
+            python3 -I .github/scripts/gradle_job_summary.py header
+            cat summary/*.md 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
