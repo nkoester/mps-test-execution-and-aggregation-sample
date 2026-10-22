@@ -1,70 +1,27 @@
-# mergetest
+# Headless interpreter test sample
 
-yadadyayday some thext here
-moar text here
-moar text here
-moar text here
-moar text here
-skldjflskdjf
+Minimal downstream project that runs iets3 interpreter tests headless (no MPS IDE) via Gradle.
 
-moar text here
-moar text here
-moar text here
+## Usage
 
-forgotten line
-moarr
-lskldfjsjkld
+```
+./gradlew setup                        # download MPS, JBR and dependencies (versions: gradle/libs.versions.toml)
+./gradlew runInterpretedTests          # case 1: interpret user models, nothing is built
+./gradlew runInterpretedLanguageTests  # case 2: build the project's own language, then interpret its tests
+./gradlew check                        # both
+./gradlew runFailingInterpretedTests   # demo: HeadlessInterpreterTest.failingTests contains a broken test, fails on purpose
+```
 
-moar text here
-moar text here
-moar text here
-moar text here
+Results: `build/test-results/interpreted-*/`. A task fails on test failures or if no results were written.
 
-lskdfskldjf
+## How it works
 
-moar text here
-moar text here
-moar text here
-moar text here
+The build model `mpsModules/solutions/buildScripts` contains an `InterpreterTestRunnerAspect` per case. Its
+generated ant script (`run-interpreted-*.xml`) starts MPS headless, loads the modules from its `path` entries and
+interprets all tests found there. Its required output folder receives the JUnit XML results.
 
-qiwlursaldkfj
-qiwlursaldkfj
-moar text here
-moar text here
-moar text here
-moar text here
-moar text here
-this will be squashed
-this will be squashed
-this will be squashed
-this will be squashed
-qiwlursaldkfj
-qiwlursaldkfj
-this will be squashed
-this will be squashed
-qiwlursaldkfj
-qiwlursaldkfj
-qiwlursaldkfj
-qiwlursaldkfj
-qiwlursaldkfj
-this will be squashed
+- `HeadlessInterpreterTest.tests` uses published iets3 languages only
+- `HeadlessInterpreterTest.languageTests` uses the project's own language `HeadlessInterpreterTest`, which has to
+  be compiled first (`buildLanguages`)
 
-qiwlursaldkfj
-qiwlursaldkfj
-qiwlursaldkfj
-qiwlursaldkfj
-
-iiii
-qiwlursaldkfj
-qiwlursaldkfj
-qiwlursaldkfj
-things here
-moar text here
-lskdfj
-this will be squashed
-this will be squashed
-
-yass
-this will be squashed
-this will be squashed
-this will be squashed
+After changing the build model, regenerate the ant scripts in MPS (rebuild `buildScripts`).

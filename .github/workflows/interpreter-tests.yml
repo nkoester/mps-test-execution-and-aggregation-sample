@@ -1,0 +1,91 @@
+name: Interpreter tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.task }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - task: runInterpretedTests
+            results: interpreted-no-build
+            expectFailure: false
+          - task: runInterpretedLanguageTests
+            results: interpreted-lang-build
+            expectFailure: false
+          # demo task, contains a test that fails on purpose
+          - task: runFailingInterpretedTests
+            results: interpreted-failing
+            expectFailure: true
+    continue-on-error: ${{ matrix.expectFailure }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK for Gradle itself; the ant/MPS tasks run on the JBR downloaded by the build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run ${{ matrix.task }}
+        run: ./gradlew --no-daemon --stacktrace ${{ matrix.task }}
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.results }}
+          path: build/test-results/${{ matrix.results }}/
+          if-no-files-found: warn
+          retention-days: 14
+
+  report:
+    name: Test report
+    needs: test
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: test-results
+
+      # Check run + annotations; pass/fail is decided by the test jobs (the failing demo is expected to fail)
+      - name: Publish check run
+        uses: mikepenz/action-junit-report@v5
+        with:
+          check_name: Interpreter test results
+          report_paths: test-results/**/InterpreterTestSuite*.xml
+          include_passed: true
+          detailed_summary: true
+          job_summary: false
+          fail_on_failure: false
+          require_tests: true
+          # PRs from forks get a read-only token and cannot create check runs
+          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
+
+      # Job summary with links that open each test node in a locally running MPS
+      - name: Write summary with node links
+        run: python3 -I .github/scripts/interpreter_test_summary.py test-results >> "$GITHUB_STEP_SUMMARY"
