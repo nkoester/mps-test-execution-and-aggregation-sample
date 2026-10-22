@@ -1,0 +1,59 @@
+name: MPS test report
+description: >-
+  Aggregates MPS test results (interpreter tests, generated Java tests, model checker) from JUnit XML
+  artifacts into a check run and a job summary with links that open the failing nodes in MPS.
+  Build tool agnostic: it only consumes artifacts named <artifact-prefix><category>-<name>.
+
+inputs:
+  artifact-prefix:
+    description: Prefix of the result artifacts; the remainder is <category>-<name>
+    default: test-results-
+  check-name:
+    description: Name of the check run
+    default: Test results
+  mps-url:
+    description: Base URL of the MPS HTTP support plugin used for node links
+    default: http://127.0.0.1:63320
+  append-markdown:
+    description: Optional markdown file appended to the job summary after the test results
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: ${{ inputs.artifact-prefix }}*
+        path: ${{ runner.temp }}/mps-test-report
+
+    # Check run + annotations; pass/fail is decided by the test jobs
+    - name: Publish check run
+      uses: mikepenz/action-junit-report@v5
+      with:
+        check_name: ${{ inputs.check-name }}
+        report_paths: |
+          ${{ runner.temp }}/mps-test-report/**/InterpreterTestSuite*.xml
+          ${{ runner.temp }}/mps-test-report/**/TEST-*.xml
+        include_passed: true
+        detailed_summary: true
+        job_summary: false
+        fail_on_failure: false
+        require_tests: false
+        # PRs from forks get a read-only token and cannot create check runs
+        annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
+
+    - name: Write job summary
+      shell: bash
+      env:
+        RESULTS: ${{ runner.temp }}/mps-test-report
+        PREFIX: ${{ inputs.artifact-prefix }}
+        MPS_URL: ${{ inputs.mps-url }}
+        APPEND: ${{ inputs.append-markdown }}
+      run: |
+        {
+          python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" "$PREFIX" "$MPS_URL"
+          if [[ -n "$APPEND" && -f "$APPEND" ]]; then
+            echo
+            cat "$APPEND"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"

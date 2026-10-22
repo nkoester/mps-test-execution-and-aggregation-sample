@@ -96,19 +96,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # category/name form the result artifact name test-results-<category>-<name>, which the report
+        # action (.github/actions/mps-test-report) groups by; results is the Gradle output folder
         include:
           - task: runInterpretedTests
+            category: interpreted
+            name: no-build
             results: interpreted-no-build
             expectFailure: false
           - task: runInterpretedLanguageTests
+            category: interpreted
+            name: lang-build
             results: interpreted-lang-build
             expectFailure: false
           # demo task, contains a test that fails on purpose
           - task: runFailingInterpretedTests
+            category: interpreted
+            name: failing
             results: interpreted-failing
             expectFailure: true
           # fails on model check errors; the report lists each error with its node link
           - task: checkModels
+            category: modelcheck
+            name: checkmodels
             results: checkmodels
             expectFailure: false
     continue-on-error: ${{ matrix.expectFailure }}
@@ -160,7 +170,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.results }}
+          name: test-results-${{ matrix.category }}-${{ matrix.name }}
           path: build/test-results/${{ matrix.results }}/
           if-no-files-found: warn
           retention-days: 14
@@ -178,39 +188,21 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: test-results-*
-          path: test-results
-
-      - uses: actions/download-artifact@v4
-        with:
           pattern: summary-*
           path: summary
           merge-multiple: true
 
-      # Check run + annotations; pass/fail is decided by the test jobs (the failing demo is expected to fail)
-      - name: Publish check run
-        uses: mikepenz/action-junit-report@v5
-        with:
-          check_name: Test results
-          report_paths: |
-            test-results/**/InterpreterTestSuite*.xml
-            test-results/**/TEST-checkModels.xml
-          include_passed: true
-          detailed_summary: true
-          job_summary: false
-          fail_on_failure: false
-          require_tests: true
-          # PRs from forks get a read-only token and cannot create check runs
-          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
-
-      # The only job summary of the run, so the test results come first: interpreter test and model check results
-      # with links that open each node in a locally running MPS, then the Gradle runs of all jobs
-      - name: Write summary
+      # repo specific part of the summary: the Gradle run of each job
+      - name: Collect Gradle runs
         run: |
           {
-            python3 -I .github/scripts/interpreter_test_summary.py test-results
             echo "# Gradle runs"
             echo
             python3 -I .github/scripts/gradle_job_summary.py header
             cat summary/*.md 2>/dev/null || true
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > "$RUNNER_TEMP/gradle-runs.md"
+
+      # The only job summary of the run, so the test results come first, then the Gradle runs
+      - uses: ./.github/actions/mps-test-report
+        with:
+          append-markdown: ${{ runner.temp }}/gradle-runs.md
