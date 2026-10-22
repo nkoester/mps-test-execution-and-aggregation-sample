@@ -156,10 +156,11 @@ jobs:
           path: ${{ env.MPS_CACHE_PATHS }}
           key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
 
-      # -PprebuiltBuildScripts skips buildScripts; its dependencies (setup) still run
+      # -PprebuiltBuildScripts skips buildScripts; its dependencies (setup) still run.
+      # xvfb-run: the generated tests' launchtests starts an IdeaEnvironment, which needs an X11 display
       - name: Run ${{ matrix.task }}
         id: gradle
-        run: ./gradlew --no-daemon --stacktrace -PprebuiltBuildScripts ${{ matrix.task }}
+        run: xvfb-run -a ./gradlew --no-daemon --stacktrace -PprebuiltBuildScripts ${{ matrix.task }}
 
       # file names keep buildScripts first, then the matrix order
       - name: Record Gradle run

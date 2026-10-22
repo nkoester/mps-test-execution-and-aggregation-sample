@@ -5,4 +5,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = "test-execution-and-aggregation-sample"
+rootProject.name = "mps-test-execution-and-aggregation-sample"
