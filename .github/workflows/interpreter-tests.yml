@@ -27,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # JDK for Gradle itself; the ant/MPS tasks run on the JBR downloaded by the build
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -39,14 +39,14 @@ jobs:
       # This job resolves all downloads the test jobs need, so it is the only one writing the cache
       # (default branch only); the test jobs restore its entry.
       # Its job summary is replaced by gradle_job_summary.py (adds MPS/dependency versions, no Build Scan column)
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           add-job-summary: never
 
       # extracted MPS, MPS dependencies and JBR; the build skips extraction when they are present
       - name: Restore extracted MPS
         id: mps-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.MPS_CACHE_PATHS }}
           key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload Gradle run
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: summary-buildScripts
           path: ${{ runner.temp }}/summary/
@@ -73,13 +73,13 @@ jobs:
       # same write policy as the Gradle cache: default branch only
       - name: Save extracted MPS
         if: steps.mps-cache.outputs.cache-hit != 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.MPS_CACHE_PATHS }}
           key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
 
       - name: Upload ant scripts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ant-scripts
           path: |
@@ -139,24 +139,24 @@ jobs:
             results: checkmodels-failing
             expectFailure: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ant-scripts
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
           add-job-summary: never
 
       - name: Restore extracted MPS
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.MPS_CACHE_PATHS }}
           key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
@@ -177,7 +177,7 @@ jobs:
 
       - name: Upload Gradle run
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: summary-${{ matrix.task }}
           path: ${{ runner.temp }}/summary/
@@ -185,7 +185,7 @@ jobs:
 
       - name: Upload test results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.category }}-${{ matrix.name }}
           path: build/test-results/${{ matrix.results }}/
@@ -231,9 +231,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: summary-*
           path: summary

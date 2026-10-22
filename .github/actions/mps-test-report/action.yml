@@ -26,19 +26,35 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.artifact-prefix }}*
         path: ${{ runner.temp }}/mps-test-report
 
+    # action-junit-report treats each report_paths line as a separate report (and check run), so the result
+    # files are collected into one directory for a single glob. TEST-*.xml excludes the aggregate
+    # TESTS-TestSuites.xml; the relative path in the file name keeps files of different artifacts apart
+    - name: Collect result files
+      shell: bash
+      env:
+        RESULTS: ${{ runner.temp }}/mps-test-report
+        JUNIT: ${{ runner.temp }}/mps-test-report-junit
+      run: |
+        mkdir -p "$JUNIT"
+        if [[ -d "$RESULTS" ]]; then
+          find "$RESULTS" -type f \( -name 'InterpreterTestSuite*.xml' -o -name 'TEST-*.xml' \) -print0 |
+            while IFS= read -r -d '' f; do
+              rel=${f#"$RESULTS"/}
+              cp "$f" "$JUNIT/${rel//\//__}"
+            done
+        fi
+
     # Check run + annotations; pass/fail is decided by the test jobs
     - name: Publish check run
-      uses: mikepenz/action-junit-report@v5
+      uses: mikepenz/action-junit-report@v6
       with:
         check_name: ${{ inputs.check-name }}
-        report_paths: |
-          ${{ runner.temp }}/mps-test-report/**/InterpreterTestSuite*.xml
-          ${{ runner.temp }}/mps-test-report/**/TEST-*.xml
+        report_paths: ${{ runner.temp }}/mps-test-report-junit/*.xml
         include_passed: true
         detailed_summary: true
         job_summary: false
