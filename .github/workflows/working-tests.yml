@@ -1,0 +1,23 @@
+name: MPS tests (working)
+
+# Only the runs that are expected to pass: a sample of a fully working (green) build.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# actions: read lets the report action resolve the artifact download links
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/mps-tests.yml
+    with:
+      include-demos: false

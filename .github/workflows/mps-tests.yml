@@ -1,0 +1,235 @@
+name: MPS tests (reusable)
+
+# Shared by the workflows MPS tests (incl. failing demos) and MPS tests (working). The caller grants the
+# permissions (contents: read, actions: read) and sets the concurrency group.
+on:
+  workflow_call:
+    inputs:
+      include-demos:
+        description: Also run the demo tasks that fail on purpose (the run fails by design)
+        type: boolean
+        default: false
+
+env:
+  # extraction targets of extractJbr, extractMps and extractMpsDependencies; all versions are in libs.versions.toml
+  MPS_CACHE_PATHS: |
+    build/jbrDownload
+    build/mps
+    build/dependencies
+
+jobs:
+  # Generates the ant scripts (build.xml, run-*.xml) from the build model once; the test jobs reuse them
+  scripts:
+    name: buildScripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      runs: ${{ steps.runs.outputs.runs }}
+      run-order: ${{ steps.runs.outputs.run-order }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The test runs (.github/test-runs.json, also read by the local Gradle task testReport); each becomes a test
+      # job. name is the run name: job name, report heading, results folder build/test-results/<name> and, with
+      # category, the artifact test-results-<category>-<name> the report action groups by. Order as in the report:
+      # model checks, interpreted, generated; working runs before the demos (expectFailure: true), which fail on
+      # purpose and are only included with include-demos
+      - name: Select runs
+        id: runs
+        env:
+          INCLUDE_DEMOS: ${{ inputs.include-demos }}
+        run: |
+          runs=$(jq -c --argjson demos "$INCLUDE_DEMOS" '[.[] | select($demos or (.expectFailure | not))]' .github/test-runs.json)
+          echo "runs=$runs" >> "$GITHUB_OUTPUT"
+          echo "run-order=$(jq -r 'map(.name) | join(",")' <<< "$runs")" >> "$GITHUB_OUTPUT"
+          jq -r '.[] | "\(.name) (\(.task))"' <<< "$runs"
+
+      # JDK for Gradle itself; the ant/MPS tasks run on the JBR downloaded by the build
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # caches the Gradle user home: wrapper, MPS, JBR and the MPS dependency zips.
+      # This job resolves all downloads the test jobs need, so it is the only one writing the cache
+      # (default branch only); the test jobs restore its entry.
+      # Its job summary is replaced by gradle_job_summary.py (adds MPS/dependency versions, no Build Scan column)
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          add-job-summary: never
+
+      # extracted MPS, MPS dependencies and JBR; the build skips extraction when they are present
+      - name: Restore extracted MPS
+        id: mps-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.MPS_CACHE_PATHS }}
+          key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Run buildScripts
+        id: gradle
+        run: ./gradlew --no-daemon --stacktrace buildScripts
+
+      # recorded for the report job, which renders the single summary of the run
+      - name: Record Gradle run
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/summary"
+          python3 -I .github/scripts/gradle_job_summary.py row buildScripts "${{ steps.gradle.outcome }}" > "$RUNNER_TEMP/summary/0-buildScripts.md"
+
+      - name: Upload Gradle run
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: summary-buildScripts
+          path: ${{ runner.temp }}/summary/
+          retention-days: 1
+
+      # same write policy as the Gradle cache: default branch only
+      - name: Save extracted MPS
+        if: steps.mps-cache.outputs.cache-hit != 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.MPS_CACHE_PATHS }}
+          key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Upload ant scripts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ant-scripts
+          path: |
+            build.xml
+            run-*.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  test:
+    name: ${{ matrix.name }}
+    needs: scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.scripts.outputs.runs) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ant-scripts
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+          add-job-summary: never
+
+      - name: Restore extracted MPS
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.MPS_CACHE_PATHS }}
+          key: mps-extracted-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      # -PprebuiltBuildScripts skips buildScripts; its dependencies (setup) still run.
+      # xvfb-run: the generated tests' launchtests starts an IdeaEnvironment, which needs an X11 display
+      - name: Run ${{ matrix.task }}
+        id: gradle
+        run: xvfb-run -a ./gradlew --no-daemon --stacktrace -PprebuiltBuildScripts ${{ matrix.task }}
+
+      # file names keep buildScripts first, then the matrix order
+      - name: Record Gradle run
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/summary"
+          python3 -I .github/scripts/gradle_job_summary.py row "${{ matrix.task }}" "${{ steps.gradle.outcome }}" \
+            > "$RUNNER_TEMP/summary/1-${{ strategy.job-index }}-${{ matrix.task }}.md"
+
+      - name: Upload Gradle run
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: summary-${{ matrix.task }}
+          path: ${{ runner.temp }}/summary/
+          retention-days: 1
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.category }}-${{ matrix.name }}
+          path: build/test-results/${{ matrix.name }}/
+          if-no-files-found: warn
+          retention-days: 14
+
+      # demo jobs fail by design; this step additionally fails them if the task passed
+      # or failed without failing tests (a crash or a broken build)
+      - name: Verify expected failure
+        if: ${{ matrix.expectFailure && !cancelled() }}
+        env:
+          OUTCOME: ${{ steps.gradle.outcome }}
+          RESULTS: build/test-results/${{ matrix.name }}
+        run: |
+          if [[ "$OUTCOME" != failure ]]; then
+            echo "::error::${{ matrix.task }} is expected to fail, but its outcome is '$OUTCOME'"
+            exit 1
+          fi
+          python3 -I - "$RESULTS" <<'EOF'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          # same result files as the report action; TESTS-TestSuites.xml (aggregate) does not match
+          files = {f for p in ("InterpreterTestSuite*.xml", "TEST-*.xml") for f in Path(sys.argv[1]).rglob(p)}
+          failed = sum(
+              case.find("failure") is not None or case.find("error") is not None
+              for f in files
+              for case in ET.parse(f).getroot().iter("testcase")
+          )
+          if not failed:
+              print(f"::error::{sys.argv[1]}: the task failed, but its result files contain no failing tests")
+              sys.exit(1)
+          print(f"Failed as expected: {failed} failing tests in {len(files)} result files")
+          EOF
+
+  report:
+    name: Test report
+    needs: [scripts, test]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # checks: write only needed with create-check-run: true
+    # actions: read lets the report action resolve the artifact download links
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: summary-*
+          path: summary
+          merge-multiple: true
+
+      # repo specific part of the summary: the Gradle run of each job
+      - name: Collect Gradle runs
+        run: |
+          {
+            echo "# Gradle runs"
+            echo
+            python3 -I .github/scripts/gradle_job_summary.py header
+            cat summary/*.md 2>/dev/null || true
+          } > "$RUNNER_TEMP/gradle-runs.md"
+
+      # The only job summary of the run, so the test results come first, then the Gradle runs
+      # no check run: the test jobs already carry the build status
+      - uses: ./.github/actions/mps-test-report
+        with:
+          append-markdown: ${{ runner.temp }}/gradle-runs.md
+          create-check-run: false
+          # same order as the runs: per category working, working with language build, failing on purpose (demos)
+          run-order: ${{ needs.scripts.outputs.run-order }}

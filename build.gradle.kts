@@ -189,6 +189,9 @@ fun MpsCheck.checkMpsModels(resultFile: String) {
     mpsHome.set(layout.dir(provider { mpsGenericPath.toFile() }))
     projectLocation.set(layout.projectDirectory.dir("mpsModules"))
     pluginRoots.add(mpsHome.dir("plugins"))
+    // the dependencies (iets3, mbeddr, MPS-extensions) as IDEA plugins, so plugin dependencies resolve: iets3 checking
+    // rules use the MPS-extensions viewmodel, whose classes are not found when it is only loaded as a module library
+    pluginRoots.add(layout.buildDirectory.dir("dependencies"))
     junitFile.set(layout.buildDirectory.file("test-results/$resultFile"))
     // one test case per message
     junitFormat.set("message")

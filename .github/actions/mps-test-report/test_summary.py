@@ -2,7 +2,7 @@
 """Render MPS test results (JUnit XML) as a markdown summary with MPS node links.
 
 Usage: test_summary.py <results-root> [--prefix P] [--mps-url URL] [--run-order NAMES] [--result-files PATTERNS]
-                       [--show-passed] [--links FILE] [--combined-artifact NAME]
+                       [--show-passed] [--expand-successful-sections] [--links FILE] [--combined-artifact NAME]
 
 <results-root> contains one directory per downloaded artifact, named <prefix><category>-<name>, e.g.
 test-results-interpreted-runInterpretedTests-no-build: the first segment after the prefix is the category (so a
@@ -11,8 +11,10 @@ category contains no '-'), the rest the run name (the category itself if there i
 (newline or comma separated); within a category, listed runs come first in that order, the others follow by name.
 --result-files are file name patterns (newline or comma separated), searched in any subdirectory; the defaults
 cover interpreter tests and JUnit/Surefire/model checker reports. Passed tests are only counted unless
---show-passed is given. --links is an optional JSON file mapping artifact names to download URLs: each run
-heading links its artifact, the top of the summary the --combined-artifact with all results.
+--show-passed is given. The runs of each category are foldable: unfolded if the category has failures or
+errors, folded otherwise unless --expand-successful-sections is given. --links is an optional JSON file mapping
+artifact names to download URLs: the overview table gets a "Test results" column with each run's artifact
+(labelled with its section number) and, in the Total row, the --combined-artifact with all results.
 
 Node links are taken from, in this order:
   1. the property 'nodeRef.<testcase name>', then 'nodeRef' (test case level before suite level)
@@ -63,15 +65,15 @@ def properties(element: ET.Element) -> dict[str, str]:
 
 
 def md(text: str, limit: int = 300) -> str:
-    # node URLs in messages are already linked from the test name
+    # node URLs in messages are already linked in the Node column
     text = NODE_URL_SUFFIX.sub("", " ".join(text.split())).strip()
     if len(text) > limit:
         text = text[: limit - 1] + "…"
     return text.replace("|", "\\|")
 
 
-def test_cell(base: str, case: dict) -> str:
-    """Short test name, linked to its node if known, followed by the severity (model checker) or test class."""
+def test_cell(case: dict) -> str:
+    """Short test name, followed by the severity (model checker) or test class."""
     ref = case["ref"]
     node_id = ref.rsplit("/", 1)[-1] if ref else None
     if node_id and case["classname"].endswith("." + node_id):
@@ -86,9 +88,13 @@ def test_cell(base: str, case: dict) -> str:
         name = name.removesuffix("_" + node_id) if node_id else NODE_ID_SUFFIX.sub("", name)
         detail = case["suite"].rsplit(".", 1)[-1]
     name = md(name, 60)
-    if ref:
-        name = f"[{name.replace('[', '(').replace(']', ')')}]({base}/node?ref={quote(ref, safe='')})"
     return f"{name} · {md(detail, 60)}" if detail else name
+
+
+def node_cell(base: str, case: dict) -> str:
+    """Link that opens the test's node in a running MPS, empty without a node reference."""
+    ref = case["ref"]
+    return f'[open]({base}/node?ref={quote(ref, safe="")} "Open in MPS")' if ref else ""
 
 
 def parse_file(path: Path):
@@ -153,24 +159,30 @@ def icon(s: dict) -> str:
     return ICONS["failed"] if s["failed"] or s["error"] else ICONS["passed"]
 
 
-def overview(groups: dict[str, list[dict]]) -> list[str]:
-    out = [
-        "| | Category | Tests | Passed | Failed | Errors | Skipped | Time (s) |",
-        "|---|---|---|---|---|---|---|---|",
-    ]
+def overview(groups: dict[str, list[dict]], links: dict[str, str], combined: str) -> list[str]:
+    # download column only if any artifact link is known (needs 'actions: read')
+    with_links = bool(links)
+    header = "| | Category | Tests | Passed | Failed | Errors | Skipped | Time (s) |"
+    separator = "|---|---|---|---|---|---|---|---|"
+    out = [header + (" Test results |" if with_links else ""), separator + ("---|" if with_links else "")]
     all_cases = []
-    for category, runs in groups.items():
+    for i, (category, runs) in enumerate(groups.items(), 1):
         cases = [c for r in runs for c in r["cases"]]
         all_cases += cases
         s = stats(cases)
+        # one link per run, labelled with its section number below
+        downloads = " ".join(
+            download_link(links.get(r["artifact"]), f"{i}.{j}", r["artifact"]) for j, r in enumerate(runs, 1)
+        )
         out.append(
             f"| {icon(s)} | {CATEGORIES.get(category, category)} | {s['tests']} | {s['passed']} | {s['failed']} "
-            f"| {s['error']} | {s['skipped']} | {s['time']:.3f} |"
+            f"| {s['error']} | {s['skipped']} | {s['time']:.3f} |" + (f" {downloads} |" if with_links else "")
         )
     s = stats(all_cases)
     out.append(
         f"| {icon(s)} | **Total** | **{s['tests']}** | **{s['passed']}** | **{s['failed']}** "
         f"| **{s['error']}** | **{s['skipped']}** | **{s['time']:.3f}** |"
+        + (f" {download_link(links.get(combined), 'all', combined)} |" if with_links else "")
     )
     return out + [""]
 
@@ -178,22 +190,22 @@ def overview(groups: dict[str, list[dict]]) -> list[str]:
 def case_table(cases: list[dict], base: str) -> list[str]:
     # failures first, then by suite/name
     order = {"error": 0, "failed": 1, "skipped": 2, "passed": 3}
-    out = ["| | Test | Time (s) | Message |", "|---|---|---|---|"]
+    out = ["| | Test | Time (s) | Message | Node |", "|---|---|---|---|---|"]
     for c in sorted(cases, key=lambda c: (order[c["status"]], c["suite"], c["name"])):
         message = SEVERITY.sub("", md(c["message"]))
-        out.append(f"| {ICONS[c['status']]} | {test_cell(base, c)} | {c['time']:.3f} | {message} |")
+        out.append(f"| {ICONS[c['status']]} | {test_cell(c)} | {c['time']:.3f} | {message} | {node_cell(base, c)} |")
     return out + [""]
 
 
-def download_link(url: str | None, title: str) -> str:
-    return f' [{DOWNLOAD}]({url} "Download {title}")' if url else ""
+def download_link(url: str | None, label: str, artifact: str) -> str:
+    return f'[{DOWNLOAD} {label}]({url} "Download {artifact}")' if url else ""
 
 
-def run_section(run: dict, base: str, number: str, links: dict[str, str], show_passed: bool) -> list[str]:
+def run_section(run: dict, base: str, number: str, show_passed: bool) -> list[str]:
     cases = run["cases"]
     s = stats(cases)
     out = [
-        f"### {number} {icon(s)} {run['name']}{download_link(links.get(run['artifact']), run['artifact'])}",
+        f"### {number} {run['name']}",
         "",
         f"{s['tests']} tests: {s['passed']} passed, {s['failed']} failed, {s['error']} errors, "
         f"{s['skipped']} skipped, {s['time']:.3f} s",
@@ -227,6 +239,8 @@ def main() -> int:
     parser.add_argument("--run-order", default="", help="run names in display order (newline/comma separated)")
     parser.add_argument("--result-files", default="\n".join(DEFAULT_RESULT_FILES), help="result file name patterns")
     parser.add_argument("--show-passed", action="store_true", help="list passed tests, not only count them")
+    parser.add_argument("--expand-successful-sections", action="store_true",
+                        help="show category sections without failures open instead of collapsed")
     parser.add_argument("--links", type=Path, help="JSON file mapping artifact names to download URLs")
     parser.add_argument("--combined-artifact", default="", help="artifact with all results, linked at the top")
     args = parser.parse_args()
@@ -241,7 +255,10 @@ def main() -> int:
     links = json.loads(args.links.read_text()) if args.links and args.links.is_file() else {}
     combined = args.combined_artifact
 
-    runs = [load_run(d, prefix, patterns) for d in sorted(root.iterdir()) if d.is_dir()] if root.is_dir() else []
+    # only artifact directories; the aggregated Ant report (aggregate-report) adds package directories next to them
+    runs = [
+        load_run(d, prefix, patterns) for d in sorted(root.iterdir()) if d.is_dir() and d.name.startswith(prefix)
+    ] if root.is_dir() else []
     if not runs:
         print("# Test results\n\nNo test results found.")
         return 0
@@ -260,15 +277,19 @@ def main() -> int:
     ):
         groups.setdefault(run["category"], []).append(run)
 
-    out = ["# Test results", ""]
-    if combined and combined in links:
-        out += [f"{DOWNLOAD} [All results]({links[combined]} \"Download {combined}\") as one archive", ""]
-    out += overview(groups)
+    out = ["# Test results", "", *overview(groups, links, combined)]
     for i, (category, category_runs) in enumerate(groups.items(), 1):
         s = stats([c for r in category_runs for c in r["cases"]])
-        out += [f"## {i}. {icon(s)} {CATEGORIES.get(category, category)}", ""]
-        for j, run in enumerate(category_runs, 1):
-            out += run_section(run, base, f"{i}.{j}", links, args.show_passed)
+        title = f"{i}. {CATEGORIES.get(category, category)}"
+        runs_out = [line for j, run in enumerate(category_runs, 1)
+                    for line in run_section(run, base, f"{i}.{j}", args.show_passed)]
+        # the runs of every category can be folded; categories with failures start unfolded, successful ones
+        # folded (unless expanded). GitHub needs the blank line after <summary> to render the markdown inside
+        failing = sum(1 for r in category_runs if (rs := stats(r["cases"]))["failed"] or rs["error"])
+        runs = f"{len(category_runs)} run{'s' if len(category_runs) != 1 else ''}"
+        summary = f"{runs}, {failing} with failures" if failing else f"{runs}, no failures"
+        details = "<details open>" if failing or args.expand_successful_sections else "<details>"
+        out += [f"## {title}", "", details, f"<summary>{summary}</summary>", "", *runs_out, "</details>", ""]
 
     print("\n".join(out))
     return 0

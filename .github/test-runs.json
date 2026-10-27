@@ -1,0 +1,10 @@
+[
+  {"task": "checkModels", "category": "modelcheck", "name": "runCheckModels", "expectFailure": false},
+  {"task": "checkFailingModels", "category": "modelcheck", "name": "runCheckModels-failing", "expectFailure": true},
+  {"task": "runInterpretedTests", "category": "interpreted", "name": "runInterpretedTests-no-build", "expectFailure": false},
+  {"task": "runInterpretedLanguageTests", "category": "interpreted", "name": "runInterpretedTests-build", "expectFailure": false},
+  {"task": "runFailingInterpretedTests", "category": "interpreted", "name": "runInterpretedTests-no-build-failing", "expectFailure": true},
+  {"task": "runFailingInterpretedLanguageTests", "category": "interpreted", "name": "runInterpretedTests-build-failing", "expectFailure": true},
+  {"task": "runGeneratedTests", "category": "generated", "name": "runGeneratedTests", "expectFailure": false},
+  {"task": "runFailingGeneratedTests", "category": "generated", "name": "runGeneratedTests-failing", "expectFailure": true}
+]

@@ -3,7 +3,7 @@ description: >-
   Aggregates MPS test results (interpreter tests, generated Java tests, model checker) from JUnit XML
   artifacts into a check run and a job summary with links that open the failing nodes in MPS.
   Build tool agnostic: it only consumes artifacts named <artifact-prefix><category>-<name>.
-  The job summary links each run to its artifact and to one combined artifact of all results; reading the
+  The overview table of the job summary links each run's artifact and one combined artifact of all results; reading the
   artifact URLs needs 'actions: read' (without it the summary has no download links).
 
 inputs:
@@ -25,6 +25,11 @@ inputs:
       List passed tests in the summary ('true'): runs with fewer than 5 tests in one table, larger ones with
       the passed tests folded. With 'false' passed tests are only counted
     default: 'false'
+  expand-successful-sections:
+    description: >-
+      The runs of every category are foldable; categories with failures or errors start unfolded. 'true' also
+      unfolds the successful categories, by default they start folded
+    default: 'false'
   check-name:
     description: Name of the check run
     default: Test results
@@ -44,6 +49,12 @@ inputs:
       Optional order of the runs (<name> part of the artifact names, one per line) within their category.
       Listed runs come first in this order, the others follow by name
     default: ''
+  aggregate-report:
+    description: >-
+      Add the classic Ant JUnit report (junitreport) of all runs to the combined artifact: index.html at its top
+      level plus TESTS-TestSuites.xml. 'frames' (default), 'noframes' or 'none'; needs ant on the runner
+      (preinstalled on GitHub-hosted Linux runners), otherwise only a warning
+    default: frames
   upload-combined-artifact:
     description: Upload all downloaded results as one artifact, linked at the top of the summary
     default: 'true'
@@ -82,6 +93,70 @@ runs:
         pattern: ${{ inputs.artifact-prefix }}*
         path: ${{ runner.temp }}/mps-test-report
 
+    # action-junit-report treats each report_paths line as a separate report (and check run), so the result
+    # files are collected into one directory for a single glob; the relative path in the file name keeps files
+    # of different artifacts apart
+    - name: Collect result files
+      shell: bash
+      env:
+        RESULTS: ${{ runner.temp }}/mps-test-report
+        JUNIT: ${{ runner.temp }}/mps-test-report-junit
+        RESULT_FILES: ${{ inputs.result-files }}
+      run: |
+        mkdir -p "$JUNIT"
+        names=()
+        while IFS= read -r pattern; do
+          pattern=${pattern#"${pattern%%[![:space:]]*}"}
+          pattern=${pattern%"${pattern##*[![:space:]]}"}
+          [[ -n "$pattern" ]] && names+=(${names:+-o} -name "$pattern")
+        done < <(tr ',' '\n' <<< "$RESULT_FILES")
+        if (( ${#names[@]} == 0 )); then
+          echo "::error::result-files must name at least one pattern"
+          exit 1
+        fi
+        if [[ -d "$RESULTS" ]]; then
+          find "$RESULTS" -type f \( "${names[@]}" \) -print0 |
+            while IFS= read -r -d '' f; do
+              rel=${f#"$RESULTS"/}
+              cp "$f" "$JUNIT/${rel//\//__}"
+            done
+        fi
+
+    # Classic Ant JUnit report (junitreport = XMLResultAggregator) over all result files: index.html, frames and
+    # TESTS-TestSuites.xml at the top level of the combined artifact. Prepared copies: junitreport needs one
+    # <testsuite> root per file and takes the package from the suite name. Without ant only a warning.
+    - name: Aggregate report
+      if: ${{ inputs.aggregate-report != 'none' && inputs.upload-combined-artifact == 'true' }}
+      shell: bash
+      env:
+        RESULTS: ${{ runner.temp }}/mps-test-report
+        JUNIT: ${{ runner.temp }}/mps-test-report-junit
+        PREPARED: ${{ runner.temp }}/mps-test-report-aggregate
+        FORMAT: ${{ inputs.aggregate-report }}
+      run: |
+        if [[ "$FORMAT" != frames && "$FORMAT" != noframes ]]; then
+          echo "::error::aggregate-report must be frames, noframes or none, not '$FORMAT'"
+          exit 1
+        fi
+        if ! command -v ant > /dev/null; then
+          echo "::warning::ant not found on the runner; the combined artifact has no aggregated report"
+          exit 0
+        fi
+        mkdir -p "$RESULTS"
+        python3 -I "$GITHUB_ACTION_PATH/prepare_aggregate.py" "$JUNIT" "$PREPARED/input"
+        cat > "$PREPARED/build.xml" <<'EOF'
+        <project name="aggregate-report" default="report">
+          <target name="report">
+            <junitreport todir="${results}">
+              <fileset dir="${input}" includes="*.xml"/>
+              <report format="${format}" todir="${results}"/>
+            </junitreport>
+          </target>
+        </project>
+        EOF
+        ant -q -f "$PREPARED/build.xml" -Dinput="$PREPARED/input" -Dresults="$RESULTS" -Dformat="$FORMAT" ||
+          echo "::warning::the aggregated report could not be created (ant junitreport failed)"
+
     - name: Upload combined results
       if: ${{ inputs.upload-combined-artifact == 'true' }}
       uses: actions/upload-artifact@v7
@@ -114,35 +189,6 @@ runs:
         Path(target).write_text(json.dumps(links))
         EOF
 
-    # action-junit-report treats each report_paths line as a separate report (and check run), so the result
-    # files are collected into one directory for a single glob; the relative path in the file name keeps files
-    # of different artifacts apart
-    - name: Collect result files
-      shell: bash
-      env:
-        RESULTS: ${{ runner.temp }}/mps-test-report
-        JUNIT: ${{ runner.temp }}/mps-test-report-junit
-        RESULT_FILES: ${{ inputs.result-files }}
-      run: |
-        mkdir -p "$JUNIT"
-        names=()
-        while IFS= read -r pattern; do
-          pattern=${pattern#"${pattern%%[![:space:]]*}"}
-          pattern=${pattern%"${pattern##*[![:space:]]}"}
-          [[ -n "$pattern" ]] && names+=(${names:+-o} -name "$pattern")
-        done < <(tr ',' '\n' <<< "$RESULT_FILES")
-        if (( ${#names[@]} == 0 )); then
-          echo "::error::result-files must name at least one pattern"
-          exit 1
-        fi
-        if [[ -d "$RESULTS" ]]; then
-          find "$RESULTS" -type f \( "${names[@]}" \) -print0 |
-            while IFS= read -r -d '' f; do
-              rel=${f#"$RESULTS"/}
-              cp "$f" "$JUNIT/${rel//\//__}"
-            done
-        fi
-
     # Check run + annotations; pass/fail is decided by the test jobs
     - name: Publish check run
       uses: mikepenz/action-junit-report@v6
@@ -169,11 +215,13 @@ runs:
         COMBINED: ${{ inputs.upload-combined-artifact == 'true' && steps.config.outputs.combined-artifact || '' }}
         RESULT_FILES: ${{ inputs.result-files }}
         SHOW_PASSED: ${{ inputs.show-passed }}
+        EXPAND_SUCCESSFUL: ${{ inputs.expand-successful-sections }}
       run: |
         {
           python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" --prefix "$PREFIX" --mps-url "$MPS_URL" \
             --run-order "$RUN_ORDER" --result-files "$RESULT_FILES" --links "$LINKS" --combined-artifact "$COMBINED" \
-            $([[ "$SHOW_PASSED" == true ]] && echo --show-passed)
+            $([[ "$SHOW_PASSED" == true ]] && echo --show-passed) \
+            $([[ "$EXPAND_SUCCESSFUL" == true ]] && echo --expand-successful-sections)
           if [[ -n "$APPEND" && -f "$APPEND" ]]; then
             echo
             cat "$APPEND"

@@ -10,9 +10,9 @@ mps = "2025.1.4"
 
 # dependencies
 antjunit = "1.10.5"
-mpsExtensions = "2025.1.3672.edfbfb9"
+mpsExtensions = "2025.1.3696.3b88dd4"
 mbeddr = "2025.1.26657.c5d588e"
-iets3Opensource = "2025.1.11415.8425241"
+iets3Opensource = "2025.1.11435.532e9c8"
 
 [plugins]
 mps-downloadJBR = { id = "download-jbr", version.ref = "downloadJBRPlugin" }
