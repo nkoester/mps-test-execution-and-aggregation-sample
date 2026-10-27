@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Render MPS test results (JUnit XML) as a markdown summary with MPS node links.
 
-Usage: test_summary.py <results-root> [<artifact-prefix>] [<mps-http-base>] [<run-order>]
+Usage: test_summary.py <results-root> [--prefix P] [--mps-url URL] [--run-order NAMES] [--result-files PATTERNS]
+                       [--show-passed] [--links FILE] [--combined-artifact NAME]
 
-<results-root> contains one directory per downloaded artifact, named <artifact-prefix><category>-<name>,
-e.g. test-results-interpreted-runInterpretedTests-no-build. Known categories are listed in CATEGORIES;
-others are shown under their raw name. <run-order> lists run names (newline or comma separated); within a
-category, listed runs come first in that order, the others follow by name. Each directory holds InterpreterTestSuite*.xml (interpreter tests) or
-TEST-*.xml (JUnit/Surefire, model checker) files.
+<results-root> contains one directory per downloaded artifact, named <prefix><category>-<name>, e.g.
+test-results-interpreted-runInterpretedTests-no-build: the first segment after the prefix is the category (so a
+category contains no '-'), the rest the run name (the category itself if there is none). Known categories
+(CATEGORIES) come first with their display names, others follow under their raw name. --run-order lists run names
+(newline or comma separated); within a category, listed runs come first in that order, the others follow by name.
+--result-files are file name patterns (newline or comma separated), searched in any subdirectory; the defaults
+cover interpreter tests and JUnit/Surefire/model checker reports. Passed tests are only counted unless
+--show-passed is given. --links is an optional JSON file mapping artifact names to download URLs: each run
+heading links its artifact, the top of the summary the --combined-artifact with all results.
 
 Node links are taken from, in this order:
   1. the property 'nodeRef.<testcase name>', then 'nodeRef' (test case level before suite level)
@@ -17,6 +22,8 @@ Interpreter tests provide 1, the model checker 2 (message). Generated tests have
 once their matchers append the node URL to the description (2), they get links without changes here.
 Links open the node in a running MPS via its HTTP support plugin.
 """
+import argparse
+import json
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -27,8 +34,9 @@ from urllib.parse import parse_qs, quote, urlparse
 CATEGORIES = {"modelcheck": "Model checker", "interpreted": "Interpreted tests", "generated": "Generated Java tests"}
 STATUSES = ("passed", "failed", "error", "skipped")
 ICONS = {"passed": "✅", "failed": "❌", "error": "💥", "skipped": "⏭️"}
+DOWNLOAD = "⬇️"
 # TESTS-TestSuites.xml (ant junitreport aggregate) intentionally does not match
-RESULT_FILES = ("InterpreterTestSuite*.xml", "TEST-*.xml")
+DEFAULT_RESULT_FILES = ("InterpreterTestSuite*.xml", "TEST-*.xml")
 JUNIT_ENGINE_SUITES = {"JUnit Jupiter", "JUnit Vintage", "JUnit Platform Suite"}
 NODE_URL = re.compile(r"https?://[^\s\]]+/node\?ref=[^\s\]]+")
 # a node URL, optionally in brackets, as appended to failure messages
@@ -37,7 +45,7 @@ NODE_URL_SUFFIX = re.compile(r"\s*\[?https?://[^\s\]]+/node\?ref=[^\s\]]+\]?")
 SEVERITY = re.compile(r"^(Error|Warning|Info):\s*")
 # generated test names end with the node id of the test item, but carry no node reference to strip it with
 NODE_ID_SUFFIX = re.compile(r"_\d{10,}$")
-# runs with fewer test cases are shown in a single table, larger ones fold their passed tests
+# with --show-passed: runs with fewer test cases are shown in a single table, larger ones fold their passed tests
 FOLD_MIN_CASES = 5
 
 
@@ -120,12 +128,15 @@ def parse_file(path: Path):
             }
 
 
-def load_run(directory: Path, prefix: str) -> dict:
+def split_list(value: str) -> list[str]:
+    return [item.strip() for item in re.split(r"[,\n]", value or "") if item.strip()]
+
+
+def load_run(directory: Path, prefix: str, patterns: list[str]) -> dict:
     category, _, name = directory.name.removeprefix(prefix).partition("-")
-    if category not in CATEGORIES:
-        category, name = directory.name.removeprefix(prefix), ""
-    files = sorted({f for pattern in RESULT_FILES for f in directory.rglob(pattern)})
+    files = sorted({f for pattern in patterns for f in directory.rglob(pattern) if f.is_file()})
     return {
+        "artifact": directory.name,
         "category": category,
         "name": name or category,
         "files": files,
@@ -174,11 +185,15 @@ def case_table(cases: list[dict], base: str) -> list[str]:
     return out + [""]
 
 
-def run_section(run: dict, base: str, number: str) -> list[str]:
+def download_link(url: str | None, title: str) -> str:
+    return f' [{DOWNLOAD}]({url} "Download {title}")' if url else ""
+
+
+def run_section(run: dict, base: str, number: str, links: dict[str, str], show_passed: bool) -> list[str]:
     cases = run["cases"]
     s = stats(cases)
     out = [
-        f"### {number} {icon(s)} {run['name']}",
+        f"### {number} {icon(s)} {run['name']}{download_link(links.get(run['artifact']), run['artifact'])}",
         "",
         f"{s['tests']} tests: {s['passed']} passed, {s['failed']} failed, {s['error']} errors, "
         f"{s['skipped']} skipped, {s['time']:.3f} s",
@@ -190,10 +205,12 @@ def run_section(run: dict, base: str, number: str) -> list[str]:
     # full suite names here, the table shows only the class name
     suites = sorted({c["suite"] for c in cases})
     out += [("Suite: " if len(suites) == 1 else "Suites: ") + ", ".join(f"`{s}`" for s in suites), ""]
-    if len(cases) < FOLD_MIN_CASES:
-        return out + case_table(cases, base)
     failures = [c for c in cases if c["status"] != "passed"]
     passed = [c for c in cases if c["status"] == "passed"]
+    if not show_passed:
+        return out + (case_table(failures, base) if failures else [])
+    if len(cases) < FOLD_MIN_CASES:
+        return out + case_table(cases, base)
     if failures:
         out += case_table(failures, base)
     if passed:
@@ -203,13 +220,28 @@ def run_section(run: dict, base: str, number: str) -> list[str]:
 
 
 def main() -> int:
-    root = Path(sys.argv[1])
-    prefix = sys.argv[2] if len(sys.argv) > 2 else "test-results-"
-    base = (sys.argv[3] if len(sys.argv) > 3 else "http://127.0.0.1:63320").rstrip("/")
-    run_order = [n for n in re.split(r"[,\n]", sys.argv[4]) if n.strip()] if len(sys.argv) > 4 else []
-    run_rank = {n.strip(): i for i, n in enumerate(run_order)}
+    parser = argparse.ArgumentParser(description="Render MPS test results as a markdown summary.")
+    parser.add_argument("root", type=Path, help="directory with one subdirectory per result artifact")
+    parser.add_argument("--prefix", default="test-results-", help="artifact name prefix before <category>-<name>")
+    parser.add_argument("--mps-url", default="http://127.0.0.1:63320", help="base URL of the MPS HTTP support")
+    parser.add_argument("--run-order", default="", help="run names in display order (newline/comma separated)")
+    parser.add_argument("--result-files", default="\n".join(DEFAULT_RESULT_FILES), help="result file name patterns")
+    parser.add_argument("--show-passed", action="store_true", help="list passed tests, not only count them")
+    parser.add_argument("--links", type=Path, help="JSON file mapping artifact names to download URLs")
+    parser.add_argument("--combined-artifact", default="", help="artifact with all results, linked at the top")
+    args = parser.parse_args()
+    if not args.prefix:
+        parser.error("--prefix must not be empty")
+    patterns = split_list(args.result_files)
+    if not patterns:
+        parser.error("--result-files must name at least one pattern")
 
-    runs = [load_run(d, prefix) for d in sorted(root.iterdir()) if d.is_dir()] if root.is_dir() else []
+    root, prefix, base = args.root, args.prefix, args.mps_url.rstrip("/")
+    run_rank = {n: i for i, n in enumerate(split_list(args.run_order))}
+    links = json.loads(args.links.read_text()) if args.links and args.links.is_file() else {}
+    combined = args.combined_artifact
+
+    runs = [load_run(d, prefix, patterns) for d in sorted(root.iterdir()) if d.is_dir()] if root.is_dir() else []
     if not runs:
         print("# Test results\n\nNo test results found.")
         return 0
@@ -228,12 +260,15 @@ def main() -> int:
     ):
         groups.setdefault(run["category"], []).append(run)
 
-    out = ["# Test results", "", *overview(groups)]
+    out = ["# Test results", ""]
+    if combined and combined in links:
+        out += [f"{DOWNLOAD} [All results]({links[combined]} \"Download {combined}\") as one archive", ""]
+    out += overview(groups)
     for i, (category, category_runs) in enumerate(groups.items(), 1):
         s = stats([c for r in category_runs for c in r["cases"]])
         out += [f"## {i}. {icon(s)} {CATEGORIES.get(category, category)}", ""]
         for j, run in enumerate(category_runs, 1):
-            out += run_section(run, base, f"{i}.{j}")
+            out += run_section(run, base, f"{i}.{j}", links, args.show_passed)
 
     print("\n".join(out))
     return 0

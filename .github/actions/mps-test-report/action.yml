@@ -3,11 +3,28 @@ description: >-
   Aggregates MPS test results (interpreter tests, generated Java tests, model checker) from JUnit XML
   artifacts into a check run and a job summary with links that open the failing nodes in MPS.
   Build tool agnostic: it only consumes artifacts named <artifact-prefix><category>-<name>.
+  The job summary links each run to its artifact and to one combined artifact of all results; reading the
+  artifact URLs needs 'actions: read' (without it the summary has no download links).
 
 inputs:
   artifact-prefix:
-    description: Prefix of the result artifacts; the remainder is <category>-<name>
+    description: >-
+      Prefix of the result artifacts (must not be empty); the remainder is <category>-<name>: the first segment
+      is the category (interpreted, generated and modelcheck have display names, others are shown as they are),
+      the rest the run name
     default: test-results-
+  result-files:
+    description: >-
+      File name patterns of the JUnit XML result files in the artifacts (one per line or comma separated,
+      matched in any subdirectory); the aggregate TESTS-TestSuites.xml is excluded by the defaults
+    default: |
+      InterpreterTestSuite*.xml
+      TEST-*.xml
+  show-passed:
+    description: >-
+      List passed tests in the summary ('true'): runs with fewer than 5 tests in one table, larger ones with
+      the passed tests folded. With 'false' passed tests are only counted
+    default: 'false'
   check-name:
     description: Name of the check run
     default: Test results
@@ -27,27 +44,99 @@ inputs:
       Optional order of the runs (<name> part of the artifact names, one per line) within their category.
       Listed runs come first in this order, the others follow by name
     default: ''
+  upload-combined-artifact:
+    description: Upload all downloaded results as one artifact, linked at the top of the summary
+    default: 'true'
+  combined-artifact:
+    description: >-
+      Name of the combined artifact; empty derives it from the prefix: all-<artifact-prefix without trailing '-'>,
+      e.g. all-test-results. Must not start with artifact-prefix (the download would pick it up as a run)
+    default: ''
+  retention-days:
+    description: Retention of the combined artifact in days; empty uses the repository default
+    default: ''
 
 runs:
   using: composite
   steps:
+    - name: Check inputs
+      id: config
+      shell: bash
+      env:
+        PREFIX: ${{ inputs.artifact-prefix }}
+        COMBINED: ${{ inputs.combined-artifact }}
+      run: |
+        if [[ -z "$PREFIX" ]]; then
+          echo "::error::artifact-prefix must not be empty, it would match every artifact of the run"
+          exit 1
+        fi
+        combined=${COMBINED:-all-${PREFIX%-}}
+        if [[ "$combined" == "$PREFIX"* ]]; then
+          echo "::error::combined-artifact '$combined' must not start with artifact-prefix '$PREFIX'"
+          exit 1
+        fi
+        echo "combined-artifact=$combined" >> "$GITHUB_OUTPUT"
+
     - uses: actions/download-artifact@v8
       with:
         pattern: ${{ inputs.artifact-prefix }}*
         path: ${{ runner.temp }}/mps-test-report
 
+    - name: Upload combined results
+      if: ${{ inputs.upload-combined-artifact == 'true' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.config.outputs.combined-artifact }}
+        path: ${{ runner.temp }}/mps-test-report/
+        if-no-files-found: ignore
+        retention-days: ${{ inputs.retention-days }}
+
+    # download URLs of all artifacts of this run (incl. the combined one), newest per name; without
+    # 'actions: read' the API call fails and the summary is written without download links
+    - name: Resolve artifact links
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        LINKS: ${{ runner.temp }}/mps-test-report-links.json
+      run: |
+        gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+          --jq '.artifacts[] | [.name, (.id | tostring), .created_at] | @tsv' > "$LINKS.tsv" ||
+          echo "::warning::Cannot list the artifacts of this run (needs 'actions: read'); no download links"
+        python3 -I - "$LINKS.tsv" "$LINKS" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" <<'EOF'
+        import json
+        import sys
+        from pathlib import Path
+
+        source, target, run_url = sys.argv[1:]
+        rows = sorted(line.split("\t") for line in Path(source).read_text().splitlines() if line.count("\t") == 2)
+        # sorted by name, then created_at: the newest artifact of a name (e.g. after a re-run) wins
+        links = {name: f"{run_url}/artifacts/{artifact_id}" for name, artifact_id, _ in rows}
+        Path(target).write_text(json.dumps(links))
+        EOF
+
     # action-junit-report treats each report_paths line as a separate report (and check run), so the result
-    # files are collected into one directory for a single glob. TEST-*.xml excludes the aggregate
-    # TESTS-TestSuites.xml; the relative path in the file name keeps files of different artifacts apart
+    # files are collected into one directory for a single glob; the relative path in the file name keeps files
+    # of different artifacts apart
     - name: Collect result files
       shell: bash
       env:
         RESULTS: ${{ runner.temp }}/mps-test-report
         JUNIT: ${{ runner.temp }}/mps-test-report-junit
+        RESULT_FILES: ${{ inputs.result-files }}
       run: |
         mkdir -p "$JUNIT"
+        names=()
+        while IFS= read -r pattern; do
+          pattern=${pattern#"${pattern%%[![:space:]]*}"}
+          pattern=${pattern%"${pattern##*[![:space:]]}"}
+          [[ -n "$pattern" ]] && names+=(${names:+-o} -name "$pattern")
+        done < <(tr ',' '\n' <<< "$RESULT_FILES")
+        if (( ${#names[@]} == 0 )); then
+          echo "::error::result-files must name at least one pattern"
+          exit 1
+        fi
         if [[ -d "$RESULTS" ]]; then
-          find "$RESULTS" -type f \( -name 'InterpreterTestSuite*.xml' -o -name 'TEST-*.xml' \) -print0 |
+          find "$RESULTS" -type f \( "${names[@]}" \) -print0 |
             while IFS= read -r -d '' f; do
               rel=${f#"$RESULTS"/}
               cp "$f" "$JUNIT/${rel//\//__}"
@@ -76,9 +165,15 @@ runs:
         MPS_URL: ${{ inputs.mps-url }}
         APPEND: ${{ inputs.append-markdown }}
         RUN_ORDER: ${{ inputs.run-order }}
+        LINKS: ${{ runner.temp }}/mps-test-report-links.json
+        COMBINED: ${{ inputs.upload-combined-artifact == 'true' && steps.config.outputs.combined-artifact || '' }}
+        RESULT_FILES: ${{ inputs.result-files }}
+        SHOW_PASSED: ${{ inputs.show-passed }}
       run: |
         {
-          python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" "$PREFIX" "$MPS_URL" "$RUN_ORDER"
+          python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" --prefix "$PREFIX" --mps-url "$MPS_URL" \
+            --run-order "$RUN_ORDER" --result-files "$RESULT_FILES" --links "$LINKS" --combined-artifact "$COMBINED" \
+            $([[ "$SHOW_PASSED" == true ]] && echo --show-passed)
           if [[ -n "$APPEND" && -f "$APPEND" ]]; then
             echo
             cat "$APPEND"

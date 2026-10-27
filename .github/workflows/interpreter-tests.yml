@@ -227,8 +227,10 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # checks: write only needed with create-check-run: true
+    # actions: read lets the report action resolve the artifact download links
     permissions:
       contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v7
 
