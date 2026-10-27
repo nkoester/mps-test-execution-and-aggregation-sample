@@ -153,27 +153,27 @@ fun TestLanguages.runMpsTests(
 // the interpreter test scripts have no 'check' target; their 'build' runs the interpreter
 val interpreterTestTargets = listOf("clean", "generate", "build")
 
-// Case 1 - no build needed: the tests in TestExecutionSample.tests are plain user models written
+// Case 1 - no build needed: the tests in libre.mps.testsample.interpreted.noBuild are plain user models written
 // with published iets3 languages only. They are loaded straight from their source folder and
 // interpreted; nothing of this project is generated or compiled. Only the ant script itself is
 // generated from the build model (buildScripts), as it is not checked in.
 val runInterpretedTests = tasks.register<TestLanguages>("runInterpretedTests") {
     dependsOn(buildScripts)
-    description = "Interpret the user-model tests (TestExecutionSample.tests) without building anything."
+    description = "Interpret the user-model tests (libre.mps.testsample.interpreted.noBuild) without building anything."
     runMpsTests(
-        "run-interpreted-no-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-no-build"),
+        "run-runInterpretedTests-no-build.xml", layout.buildDirectory.dir("test-results/runInterpretedTests-no-build"),
         antTargets = interpreterTestTargets,
     )
 }
 
-// Case 2 - own language: the tests in TestExecutionSample.languageTests use the project's own
-// language (TestExecutionSample) and its interpreter. These must be compiled, so the language
-// plugin is built first and loaded from build/artifacts/test-execution-and-aggregation-sample.
+// Case 2 - own language: the tests in libre.mps.testsample.interpreted.build use the project's own
+// language (libre.mps.testsample) and its interpreter. These must be compiled, so the language
+// plugin is built first and loaded from build/artifacts/libre.mps.testsample.
 val runInterpretedLanguageTests = tasks.register<TestLanguages>("runInterpretedLanguageTests") {
     dependsOn(buildLanguages)
-    description = "Build the project's language and interpret the tests that use it (TestExecutionSample.languageTests)."
+    description = "Build the project's language and interpret the tests that use it (libre.mps.testsample.interpreted.build)."
     runMpsTests(
-        "run-interpreted-lang-build-tests.xml", layout.buildDirectory.dir("test-results/interpreted-lang-build"),
+        "run-runInterpretedTests-build.xml", layout.buildDirectory.dir("test-results/runInterpretedTests-build"),
         antTargets = interpreterTestTargets,
     )
 }
@@ -196,11 +196,11 @@ fun MpsCheck.checkMpsModels(resultFile: String) {
 }
 
 // contains a model check error and a warning on purpose; checked only by checkFailingModels
-val failingModelChecksModule = "TestExecutionSample.failingModelChecks"
+val failingModelChecksModule = "libre.mps.testsample.modelcheck.failing"
 
 val checkModels = tasks.register<MpsCheck>("checkModels") {
     description = "Run the MPS model checker on all modules of the project except $failingModelChecksModule."
-    checkMpsModels("checkmodels/TEST-checkModels.xml")
+    checkMpsModels("runCheckModels/TEST-runCheckModels.xml")
     excludeModules.add(failingModelChecksModule)
 }
 
@@ -208,26 +208,39 @@ tasks.check {
     dependsOn(runInterpretedTests, runInterpretedLanguageTests, checkModels)
 }
 
-// Demo of a failing run - not part of 'check'. TestExecutionSample.failingTests contains a test that fails
-// on purpose; the task fails and the report shows the failure with its node URL and the nodeRef properties.
+// Demo of a failing run - not part of 'check'. libre.mps.testsample.interpreted.noBuild.failing contains a test
+// that fails on purpose; the task fails and the report shows the failure with its node URL and the nodeRef properties.
 val runFailingInterpretedTests = tasks.register<TestLanguages>("runFailingInterpretedTests") {
     dependsOn(buildScripts)
-    description = "Interpret TestExecutionSample.failingTests, which contains a broken test - this task is expected to fail."
+    description = "Interpret libre.mps.testsample.interpreted.noBuild.failing, which contains a broken test - this task is expected to fail."
     runMpsTests(
-        "run-interpreted-failing-tests.xml", layout.buildDirectory.dir("test-results/interpreted-failing"),
+        "run-runInterpretedTests-no-build-failing.xml",
+        layout.buildDirectory.dir("test-results/runInterpretedTests-no-build-failing"),
         antTargets = interpreterTestTargets,
     )
 }
 
-// Case 3 - generated tests: the tests in TestExecutionSample.generatedTests (published iets3 languages only)
+// Demo of a failing run with the own language - not part of 'check'. libre.mps.testsample.interpreted.build.failing
+// contains a test of the project's language that fails on purpose; like Case 2 it needs the languages built.
+val runFailingInterpretedLanguageTests = tasks.register<TestLanguages>("runFailingInterpretedLanguageTests") {
+    dependsOn(buildLanguages)
+    description = "Build the project's language and interpret libre.mps.testsample.interpreted.build.failing, which contains a broken test - this task is expected to fail."
+    runMpsTests(
+        "run-runInterpretedTests-build-failing.xml",
+        layout.buildDirectory.dir("test-results/runInterpretedTests-build-failing"),
+        antTargets = interpreterTestTargets,
+    )
+}
+
+// Case 3 - generated tests: the tests in libre.mps.testsample.generated (published iets3 languages only)
 // are generated to JUnit test classes, compiled and run in a headless MPS by MPS' module tests.
 val generatedTestResults = "**/TEST-*.xml"
 
 val runGeneratedTests = tasks.register<TestLanguages>("runGeneratedTests") {
     dependsOn(buildScripts)
-    description = "Generate, compile and run the tests in TestExecutionSample.generatedTests as JUnit tests."
+    description = "Generate, compile and run the tests in libre.mps.testsample.generated as JUnit tests."
     runMpsTests(
-        "run-generated-tests.xml", layout.buildDirectory.dir("test-results/generated"),
+        "run-runGeneratedTests.xml", layout.buildDirectory.dir("test-results/runGeneratedTests"),
         generatedTestResults,
     )
 }
@@ -236,22 +249,22 @@ tasks.check {
     dependsOn(runGeneratedTests)
 }
 
-// Demo of a failing generated run - not part of 'check'. TestExecutionSample.generatedFailingTests contains
+// Demo of a failing generated run - not part of 'check'. libre.mps.testsample.generated.failing contains
 // a passing and a broken test; the task is expected to fail.
 val runFailingGeneratedTests = tasks.register<TestLanguages>("runFailingGeneratedTests") {
     dependsOn(buildScripts)
-    description = "Generate and run TestExecutionSample.generatedFailingTests, which contains a broken test - this task is expected to fail."
+    description = "Generate and run libre.mps.testsample.generated.failing, which contains a broken test - this task is expected to fail."
     runMpsTests(
-        "run-generated-failing-tests.xml", layout.buildDirectory.dir("test-results/generated-failing"),
+        "run-runGeneratedTests-failing.xml", layout.buildDirectory.dir("test-results/runGeneratedTests-failing"),
         generatedTestResults,
     )
 }
 
-// Demo of a failing model check - not part of 'check'. TestExecutionSample.failingModelChecks contains a model
+// Demo of a failing model check - not part of 'check'. libre.mps.testsample.modelcheck.failing contains a model
 // check error and a warning; the task is expected to fail and the report lists both with their node links.
 val checkFailingModels = tasks.register<MpsCheck>("checkFailingModels") {
     description = "Run the MPS model checker on $failingModelChecksModule, which contains a model check error and a warning - this task is expected to fail."
-    checkMpsModels("checkmodels-failing/TEST-checkFailingModels.xml")
+    checkMpsModels("runCheckModels-failing/TEST-runCheckModels-failing.xml")
     modules.add(failingModelChecksModule)
     // the backend writes only errors to the JUnit file; warnings are included (as failures) only with this flag
     warningAsError.set(true)
@@ -262,7 +275,10 @@ val checkFailingModels = tasks.register<MpsCheck>("checkFailingModels") {
 tasks.register("runAllTests") {
     group = "verification"
     description = "Run all tests and model checks, including the failing demos - use with --continue."
-    dependsOn(tasks.check, runFailingInterpretedTests, runFailingGeneratedTests, checkFailingModels)
+    dependsOn(
+        tasks.check, runFailingInterpretedTests, runFailingInterpretedLanguageTests, runFailingGeneratedTests,
+        checkFailingModels,
+    )
 }
 
 tasks.assemble {

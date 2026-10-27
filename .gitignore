@@ -76,5 +76,4 @@ TESTS-*.xml
 # buildAll.xml is not generated: it bootstraps the generation
 # -----------------------------------------------------------
 /build.xml
-/run-interpreted-*.xml
-/run-generated-*.xml
+/run-*.xml

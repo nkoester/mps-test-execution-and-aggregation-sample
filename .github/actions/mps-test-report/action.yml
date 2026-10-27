@@ -22,6 +22,11 @@ inputs:
       Publish the results as a check run, which fails if any test failed. With 'false' the failures are only
       annotated, so the build status depends on the test jobs alone
     default: 'true'
+  run-order:
+    description: >-
+      Optional order of the runs (<name> part of the artifact names, one per line) within their category.
+      Listed runs come first in this order, the others follow by name
+    default: ''
 
 runs:
   using: composite
@@ -70,9 +75,10 @@ runs:
         PREFIX: ${{ inputs.artifact-prefix }}
         MPS_URL: ${{ inputs.mps-url }}
         APPEND: ${{ inputs.append-markdown }}
+        RUN_ORDER: ${{ inputs.run-order }}
       run: |
         {
-          python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" "$PREFIX" "$MPS_URL"
+          python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" "$PREFIX" "$MPS_URL" "$RUN_ORDER"
           if [[ -n "$APPEND" && -f "$APPEND" ]]; then
             echo
             cat "$APPEND"

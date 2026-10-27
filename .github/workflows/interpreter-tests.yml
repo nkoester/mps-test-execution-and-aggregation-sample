@@ -1,4 +1,4 @@
-name: Interpreter tests
+name: MPS tests
 
 on:
   push:
@@ -89,54 +89,53 @@ jobs:
           retention-days: 1
 
   test:
-    name: ${{ matrix.task }}
+    name: ${{ matrix.name }}
     needs: scripts
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        # category/name form the result artifact name test-results-<category>-<name>, which the report
-        # action (.github/actions/mps-test-report) groups by; results is the Gradle output folder
+        # name is the run name: job name, report heading, results folder build/test-results/<name> and, with
+        # category, the artifact test-results-<category>-<name> the report action groups by. Order as in the
+        # report: model checks, interpreted, generated; working runs before the demos that fail on purpose
         include:
+          # fails on model check errors; the report lists each error with its node link
+          - task: checkModels
+            category: modelcheck
+            name: runCheckModels
+            expectFailure: false
+          # demo task, libre.mps.testsample.modelcheck.failing contains a model check error and a warning
+          - task: checkFailingModels
+            category: modelcheck
+            name: runCheckModels-failing
+            expectFailure: true
           - task: runInterpretedTests
             category: interpreted
-            name: no-build
-            results: interpreted-no-build
+            name: runInterpretedTests-no-build
             expectFailure: false
           - task: runInterpretedLanguageTests
             category: interpreted
-            name: lang-build
-            results: interpreted-lang-build
+            name: runInterpretedTests-build
             expectFailure: false
           # demo task, contains a test that fails on purpose
           - task: runFailingInterpretedTests
             category: interpreted
-            name: failing
-            results: interpreted-failing
+            name: runInterpretedTests-no-build-failing
+            expectFailure: true
+          # demo task, contains a test of the own language that fails on purpose
+          - task: runFailingInterpretedLanguageTests
+            category: interpreted
+            name: runInterpretedTests-build-failing
             expectFailure: true
           - task: runGeneratedTests
             category: generated
-            name: tests
-            results: generated
+            name: runGeneratedTests
             expectFailure: false
           # demo task, contains a generated test that fails on purpose
           - task: runFailingGeneratedTests
             category: generated
-            name: failing
-            results: generated-failing
-            expectFailure: true
-          # fails on model check errors; the report lists each error with its node link
-          - task: checkModels
-            category: modelcheck
-            name: checkmodels
-            results: checkmodels
-            expectFailure: false
-          # demo task, TestExecutionSample.failingModelChecks contains a model check error and a warning
-          - task: checkFailingModels
-            category: modelcheck
-            name: failing
-            results: checkmodels-failing
+            name: runGeneratedTests-failing
             expectFailure: true
     steps:
       - uses: actions/checkout@v7
@@ -188,7 +187,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.category }}-${{ matrix.name }}
-          path: build/test-results/${{ matrix.results }}/
+          path: build/test-results/${{ matrix.name }}/
           if-no-files-found: warn
           retention-days: 14
 
@@ -198,7 +197,7 @@ jobs:
         if: ${{ matrix.expectFailure && !cancelled() }}
         env:
           OUTCOME: ${{ steps.gradle.outcome }}
-          RESULTS: build/test-results/${{ matrix.results }}
+          RESULTS: build/test-results/${{ matrix.name }}
         run: |
           if [[ "$OUTCOME" != failure ]]; then
             echo "::error::${{ matrix.task }} is expected to fail, but its outcome is '$OUTCOME'"
@@ -255,3 +254,13 @@ jobs:
         with:
           append-markdown: ${{ runner.temp }}/gradle-runs.md
           create-check-run: false
+          # per category: working, working with language build, failing on purpose (demos)
+          run-order: |
+            runCheckModels
+            runCheckModels-failing
+            runInterpretedTests-no-build
+            runInterpretedTests-build
+            runInterpretedTests-no-build-failing
+            runInterpretedTests-build-failing
+            runGeneratedTests
+            runGeneratedTests-failing

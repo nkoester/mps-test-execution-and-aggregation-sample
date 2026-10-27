@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Render MPS test results (JUnit XML) as a markdown summary with MPS node links.
 
-Usage: test_summary.py <results-root> [<artifact-prefix>] [<mps-http-base>]
+Usage: test_summary.py <results-root> [<artifact-prefix>] [<mps-http-base>] [<run-order>]
 
 <results-root> contains one directory per downloaded artifact, named <artifact-prefix><category>-<name>,
-e.g. test-results-interpreted-no-build. Known categories are listed in CATEGORIES; others are shown
-under their raw name. Each directory holds InterpreterTestSuite*.xml (interpreter tests) or
+e.g. test-results-interpreted-runInterpretedTests-no-build. Known categories are listed in CATEGORIES;
+others are shown under their raw name. <run-order> lists run names (newline or comma separated); within a
+category, listed runs come first in that order, the others follow by name. Each directory holds InterpreterTestSuite*.xml (interpreter tests) or
 TEST-*.xml (JUnit/Surefire, model checker) files.
 
 Node links are taken from, in this order:
@@ -105,6 +106,9 @@ def parse_file(path: Path):
             # JUnit 5 reports name the suite after the engine ('JUnit Jupiter'), the test class is the classname
             if suite_name in JUNIT_ENGINE_SUITES and case.get("classname"):
                 suite_name = case.get("classname")
+            # the model checker splits the model name into package (module part) and name (last segment)
+            elif "." not in suite_name and suite.get("package"):
+                suite_name = f"{suite.get('package')}.{suite_name}"
             yield {
                 "suite": suite_name,
                 "name": name,
@@ -202,16 +206,26 @@ def main() -> int:
     root = Path(sys.argv[1])
     prefix = sys.argv[2] if len(sys.argv) > 2 else "test-results-"
     base = (sys.argv[3] if len(sys.argv) > 3 else "http://127.0.0.1:63320").rstrip("/")
+    run_order = [n for n in re.split(r"[,\n]", sys.argv[4]) if n.strip()] if len(sys.argv) > 4 else []
+    run_rank = {n.strip(): i for i, n in enumerate(run_order)}
 
     runs = [load_run(d, prefix) for d in sorted(root.iterdir()) if d.is_dir()] if root.is_dir() else []
     if not runs:
         print("# Test results\n\nNo test results found.")
         return 0
 
-    # known categories in their defined order, then unknown ones by name
+    # known categories in their defined order, then unknown ones by name; runs by run_order, then by name
     rank = {c: i for i, c in enumerate(CATEGORIES)}
     groups: dict[str, list[dict]] = {}
-    for run in sorted(runs, key=lambda r: (rank.get(r["category"], len(rank)), r["category"], r["name"])):
+    for run in sorted(
+        runs,
+        key=lambda r: (
+            rank.get(r["category"], len(rank)),
+            r["category"],
+            run_rank.get(r["name"], len(run_rank)),
+            r["name"],
+        ),
+    ):
         groups.setdefault(run["category"], []).append(run)
 
     out = ["# Test results", "", *overview(groups)]
