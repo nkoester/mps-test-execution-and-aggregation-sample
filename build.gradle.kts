@@ -50,11 +50,17 @@ dependencies {
     modelcheckBackend(libs.mps.modelcheckBackend)
 }
 
-// Extraction is skipped when the target already holds the same artifacts, e.g. restored from the CI cache.
-// Gradle's own up-to-date check cannot detect that, as its task history (.gradle/) is not part of that cache.
+// On CI, extraction is skipped when the target already holds the same artifacts, restored from the CI cache.
+// Gradle's own up-to-date check cannot detect that there, as its task history (.gradle/) is not part of that cache.
+// Locally, Gradle's up-to-date check decides, so deleted or changed files in the target are extracted again.
+// The marker is written in both cases: the model check tasks reset their system dir when it changes.
+val isCi = providers.environmentVariable("CI").map { it == "true" }.getOrElse(false)
+
 fun Task.skipIfExtracted(targetDir: File, id: String) {
     val marker = targetDir.resolve(".extracted")
-    onlyIf("$targetDir does not contain $id yet") { !(marker.isFile && marker.readText() == id) }
+    if (isCi) {
+        onlyIf("$targetDir does not contain $id yet") { !(marker.isFile && marker.readText() == id) }
+    }
     doLast { marker.writeText(id) }
 }
 
@@ -64,14 +70,16 @@ tasks.extractJbr {
     skipIfExtracted(file("$buildPath/jbrDownload"), "jbr:${libs.versions.jbr.get()}")
 }
 
-val extractMps = tasks.register<Copy>("extractMps") {
+// Sync instead of Copy: files in the target that are no longer in the zips (e.g. modules of an older version) are
+// deleted; the .extracted marker is written again by skipIfExtracted after each sync
+val extractMps = tasks.register<Sync>("extractMps") {
     dependsOn(tasks.extractJbr)
     from({ mps.resolve().map { zipTree(it) } })
     into(mpsGenericPath)
     skipIfExtracted(mpsGenericPath.toFile(), mps.fingerprint())
 }
 
-val extractMpsDependencies = tasks.register<Copy>("extractMpsDependencies") {
+val extractMpsDependencies = tasks.register<Sync>("extractMpsDependencies") {
     dependsOn(extractMps)
     from({ mpsDependencies.resolve().map { zipTree(it) } })
     into(dependencyInstallPath)
