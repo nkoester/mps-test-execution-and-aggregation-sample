@@ -1,0 +1,61 @@
+name: MPS tests (nightly)
+
+# Nightly release build: the runs that are expected to pass. Only if all of them pass, the combined test results
+# (artifact all-test-results incl. the aggregated Ant report) are published. Where to is decided by the hook
+# .github/scripts/publish_test_results.sh, so this workflow stays independent of the target.
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+# granted for the report job of mps-tests.yml (artifact links, check run, PR comment), see there
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
+# a nightly build is not cancelled by the next one
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    uses: ./.github/workflows/mps-tests.yml
+    with:
+      include-demos: false
+
+  publish:
+    name: Publish test results
+    needs: tests
+    if: ${{ needs.tests.outputs.tests-passed == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # by id: a single artifact is extracted directly into path
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.tests.outputs.combined-artifact-id }}
+          path: ${{ runner.temp }}/test-results
+
+      - name: Package test results
+        id: package
+        env:
+          RESULTS: ${{ runner.temp }}/test-results
+          ARTIFACT: ${{ needs.tests.outputs.combined-artifact }}
+        run: |
+          version="nightly-$(date -u +%Y%m%d)-${GITHUB_RUN_NUMBER}"
+          package="$RUNNER_TEMP/$ARTIFACT-$version.zip"
+          (cd "$RESULTS" && zip -q -r "$package" .)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+
+      # the only place that knows the target (GitHub Pages, a release, a binary repository, ...)
+      - name: Publish test results
+        env:
+          PACKAGE: ${{ steps.package.outputs.package }}
+          VERSION: ${{ steps.package.outputs.version }}
+          RESULTS: ${{ runner.temp }}/test-results
+        run: bash .github/scripts/publish_test_results.sh "$PACKAGE" "$VERSION" "$RESULTS"

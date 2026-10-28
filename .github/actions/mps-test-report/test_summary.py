@@ -3,6 +3,7 @@
 
 Usage: test_summary.py <results-root> [--prefix P] [--mps-url URL] [--run-order NAMES] [--result-files PATTERNS]
                        [--show-passed] [--expand-successful-sections] [--links FILE] [--combined-artifact NAME]
+                       [--stats FILE]
 
 <results-root> contains one directory per downloaded artifact, named <prefix><category>-<name>, e.g.
 test-results-interpreted-runInterpretedTests-no-build: the first segment after the prefix is the category (so a
@@ -15,6 +16,9 @@ cover interpreter tests and JUnit/Surefire/model checker reports. Passed tests a
 errors, folded otherwise unless --expand-successful-sections is given. --links is an optional JSON file mapping
 artifact names to download URLs: the overview table gets a "Test results" column with each run's artifact
 (labelled with its section number) and, in the Total row, the --combined-artifact with all results.
+
+--stats writes the totals over all runs as key=value lines (runs, tests, passed, failed, errors, skipped), e.g. for
+GITHUB_OUTPUT.
 
 Node links are taken from, in this order:
   1. the property 'nodeRef.<testcase name>', then 'nodeRef' (test case level before suite level)
@@ -243,6 +247,7 @@ def main() -> int:
                         help="show category sections without failures open instead of collapsed")
     parser.add_argument("--links", type=Path, help="JSON file mapping artifact names to download URLs")
     parser.add_argument("--combined-artifact", default="", help="artifact with all results, linked at the top")
+    parser.add_argument("--stats", type=Path, help="write the totals as key=value lines to this file")
     args = parser.parse_args()
     if not args.prefix:
         parser.error("--prefix must not be empty")
@@ -259,6 +264,12 @@ def main() -> int:
     runs = [
         load_run(d, prefix, patterns) for d in sorted(root.iterdir()) if d.is_dir() and d.name.startswith(prefix)
     ] if root.is_dir() else []
+    if args.stats:
+        s = stats([c for r in runs for c in r["cases"]])
+        totals = {"runs": len(runs), "tests": s["tests"], "passed": s["passed"], "failed": s["failed"],
+                  "errors": s["error"], "skipped": s["skipped"]}
+        with args.stats.open("a") as f:
+            f.writelines(f"{k}={v}\n" for k, v in totals.items())
     if not runs:
         print("# Test results\n\nNo test results found.")
         return 0
