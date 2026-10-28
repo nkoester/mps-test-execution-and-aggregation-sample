@@ -47,8 +47,11 @@ inputs:
     default: 'false'
   create-check-run:
     description: >-
-      Publish the results as a check run, which fails if any test failed. With 'false' the failures are only
-      annotated, so the build status depends on the test jobs alone
+      'true': publish the results as a separate check run (named check-name), which fails if any test failed;
+      GitHub files such a check run into any check suite of the commit, so with several workflows on one commit it
+      can appear under another workflow. 'job': write the report (title, summary, annotations) into the check of
+      the job running this action and fail the job if any test failed or errored; always shown under its own
+      workflow. 'false': annotations only, the build status depends on the test jobs alone
     default: 'true'
   run-order:
     description: >-
@@ -72,6 +75,35 @@ inputs:
   retention-days:
     description: Retention of the combined artifact in days; empty uses the repository default
     default: ''
+
+outputs:
+  runs:
+    description: Number of result artifacts (runs) found
+    value: ${{ steps.summary.outputs.runs }}
+  tests:
+    description: Number of test cases (model checker findings count as failed test cases)
+    value: ${{ steps.summary.outputs.tests }}
+  passed:
+    description: Number of passed test cases
+    value: ${{ steps.summary.outputs.passed }}
+  failed:
+    description: Number of failed test cases
+    value: ${{ steps.summary.outputs.failed }}
+  errors:
+    description: Number of test cases with errors
+    value: ${{ steps.summary.outputs.errors }}
+  skipped:
+    description: Number of skipped test cases
+    value: ${{ steps.summary.outputs.skipped }}
+  combined-artifact:
+    description: Name of the combined artifact (empty if not uploaded)
+    value: ${{ steps.combined.outputs.artifact-id && steps.config.outputs.combined-artifact || '' }}
+  combined-artifact-id:
+    description: ID of the combined artifact, e.g. for actions/download-artifact with artifact-ids
+    value: ${{ steps.combined.outputs.artifact-id }}
+  combined-artifact-url:
+    description: Download URL of the combined artifact
+    value: ${{ steps.combined.outputs.artifact-url }}
 
 runs:
   using: composite
@@ -164,6 +196,7 @@ runs:
           echo "::warning::the aggregated report could not be created (ant junitreport failed)"
 
     - name: Upload combined results
+      id: combined
       if: ${{ inputs.upload-combined-artifact == 'true' }}
       uses: actions/upload-artifact@v7
       with:
@@ -210,6 +243,7 @@ runs:
         annotate_only: ${{ inputs.create-check-run != 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
 
     - name: Write job summary
+      id: summary
       shell: bash
       env:
         RESULTS: ${{ runner.temp }}/mps-test-report
@@ -228,7 +262,8 @@ runs:
         python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" --prefix "$PREFIX" --mps-url "$MPS_URL" \
           --run-order "$RUN_ORDER" --result-files "$RESULT_FILES" --links "$LINKS" --combined-artifact "$COMBINED" \
           $([[ "$SHOW_PASSED" == true ]] && echo --show-passed) \
-          $([[ "$EXPAND_SUCCESSFUL" == true ]] && echo --expand-successful-sections) > "$SUMMARY"
+          $([[ "$EXPAND_SUCCESSFUL" == true ]] && echo --expand-successful-sections) \
+          --stats "$GITHUB_OUTPUT" > "$SUMMARY"
         {
           cat "$SUMMARY"
           if [[ -n "$APPEND" && -f "$APPEND" ]]; then
@@ -249,3 +284,28 @@ runs:
         WORKFLOW: ${{ github.workflow }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: bash "$GITHUB_ACTION_PATH/pr_comment.sh"
+
+    # create-check-run: job - the job's own check gets the report; a separate check run would be filed into an
+    # arbitrary check suite of the commit
+    - name: Write report into the job check
+      if: ${{ inputs.create-check-run == 'job' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SUMMARY: ${{ runner.temp }}/mps-test-report-summary.md
+        TITLE: >-
+          ${{ steps.summary.outputs.tests }} tests: ${{ steps.summary.outputs.passed }} passed,
+          ${{ steps.summary.outputs.failed }} failed, ${{ steps.summary.outputs.errors }} errors,
+          ${{ steps.summary.outputs.skipped }} skipped
+      run: bash "$GITHUB_ACTION_PATH/job_check.sh"
+
+    # last step: the job (and so its check) is red if any test failed or errored
+    - name: Fail on test failures
+      if: ${{ inputs.create-check-run == 'job' && (steps.summary.outputs.failed != '0' || steps.summary.outputs.errors != '0') }}
+      shell: bash
+      env:
+        FAILED: ${{ steps.summary.outputs.failed }}
+        ERRORS: ${{ steps.summary.outputs.errors }}
+      run: |
+        echo "::error::$FAILED failed and $ERRORS errored test cases"
+        exit 1

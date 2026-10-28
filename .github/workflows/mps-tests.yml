@@ -10,13 +10,25 @@ on:
         type: boolean
         default: false
       create-check-run:
-        description: "Publish the results as a check run (fails with the tests); needs 'checks: write' from the caller"
+        description: >-
+          Write the report into the check of the report job, which fails with the tests (action input
+          create-check-run: job); needs 'checks: write' from the caller
         type: boolean
         default: false
       pr-comment:
         description: "Post the test report as a pull request comment; needs 'pull-requests: write' from the caller"
         type: boolean
         default: false
+    outputs:
+      tests-passed:
+        description: "'true' if all jobs succeeded and the report has results and no failures or errors"
+        value: ${{ jobs.report.outputs.tests-passed }}
+      combined-artifact:
+        description: Name of the artifact with all results (all-test-results)
+        value: ${{ jobs.report.outputs.combined-artifact }}
+      combined-artifact-id:
+        description: ID of that artifact, for actions/download-artifact with artifact-ids
+        value: ${{ jobs.report.outputs.combined-artifact-id }}
 
 env:
   # extraction targets of extractJbr, extractMps and extractMpsDependencies; all versions are in libs.versions.toml
@@ -209,6 +221,13 @@ jobs:
     needs: [scripts, test]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    # the outcome for callers, e.g. to publish the combined results of a successful release build
+    outputs:
+      tests-passed: >-
+        ${{ needs.scripts.result == 'success' && needs.test.result == 'success' && steps.report.outputs.runs != '0'
+        && steps.report.outputs.failed == '0' && steps.report.outputs.errors == '0' }}
+      combined-artifact: ${{ steps.report.outputs.combined-artifact }}
+      combined-artifact-id: ${{ steps.report.outputs.combined-artifact-id }}
     # actions: read resolves the artifact download links, checks: write creates the check run (create-check-run),
     # pull-requests: write posts the comment (pr-comment); a reusable workflow cannot vary its permissions per call,
     # so every caller has to grant all of them
@@ -238,11 +257,13 @@ jobs:
 
       # The only job summary of the run, so the test results come first, then the Gradle runs
       - uses: ./.github/actions/mps-test-report
+        id: report
         with:
           append-markdown: ${{ runner.temp }}/gradle-runs.md
-          create-check-run: ${{ inputs.create-check-run }}
+          # the report job's own check instead of a separate check run: always filed under the calling workflow
+          create-check-run: ${{ inputs.create-check-run && 'job' || 'false' }}
           pr-comment: ${{ inputs.pr-comment }}
-          # one check run and one PR comment per calling workflow
+          # one PR comment per calling workflow
           check-name: ${{ github.workflow }}
           # same order as the runs: per category working, working with language build, failing on purpose (demos)
           run-order: ${{ needs.scripts.outputs.run-order }}
