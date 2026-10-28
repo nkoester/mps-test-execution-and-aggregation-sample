@@ -7,10 +7,12 @@ on:
   pull_request:
   workflow_dispatch:
 
-# actions: read lets the report action resolve the artifact download links
+# granted for the report job of mps-tests.yml (artifact links, check run, PR comment), see there
 permissions:
   contents: read
   actions: read
+  checks: write
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,3 +23,6 @@ jobs:
     uses: ./.github/workflows/mps-tests.yml
     with:
       include-demos: true
+      # red by design: the check run and the PR comment show the demo failures
+      create-check-run: true
+      pr-comment: true

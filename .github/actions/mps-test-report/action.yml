@@ -39,6 +39,12 @@ inputs:
   append-markdown:
     description: Optional markdown file appended to the job summary after the test results
     default: ''
+  pr-comment:
+    description: >-
+      On pull_request events, post the test report (without append-markdown) as a PR comment and update that
+      comment on later runs (one comment per workflow and check-name). Needs 'pull-requests: write'; PRs from
+      forks are skipped (read-only token). Falls back to the overview table if the report exceeds the comment limit
+    default: 'false'
   create-check-run:
     description: >-
       Publish the results as a check run, which fails if any test failed. With 'false' the failures are only
@@ -216,14 +222,30 @@ runs:
         RESULT_FILES: ${{ inputs.result-files }}
         SHOW_PASSED: ${{ inputs.show-passed }}
         EXPAND_SUCCESSFUL: ${{ inputs.expand-successful-sections }}
+        SUMMARY: ${{ runner.temp }}/mps-test-report-summary.md
       run: |
+        # also kept as a file for the pull request comment
+        python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" --prefix "$PREFIX" --mps-url "$MPS_URL" \
+          --run-order "$RUN_ORDER" --result-files "$RESULT_FILES" --links "$LINKS" --combined-artifact "$COMBINED" \
+          $([[ "$SHOW_PASSED" == true ]] && echo --show-passed) \
+          $([[ "$EXPAND_SUCCESSFUL" == true ]] && echo --expand-successful-sections) > "$SUMMARY"
         {
-          python3 -I "$GITHUB_ACTION_PATH/test_summary.py" "$RESULTS" --prefix "$PREFIX" --mps-url "$MPS_URL" \
-            --run-order "$RUN_ORDER" --result-files "$RESULT_FILES" --links "$LINKS" --combined-artifact "$COMBINED" \
-            $([[ "$SHOW_PASSED" == true ]] && echo --show-passed) \
-            $([[ "$EXPAND_SUCCESSFUL" == true ]] && echo --expand-successful-sections)
+          cat "$SUMMARY"
           if [[ -n "$APPEND" && -f "$APPEND" ]]; then
             echo
             cat "$APPEND"
           fi
         } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Comment on pull request
+      if: ${{ inputs.pr-comment == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SUMMARY: ${{ runner.temp }}/mps-test-report-summary.md
+        MARKER: '<!-- mps-test-report: ${{ github.workflow }} / ${{ inputs.check-name }} -->'
+        PR: ${{ github.event.pull_request.number }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        WORKFLOW: ${{ github.workflow }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: bash "$GITHUB_ACTION_PATH/pr_comment.sh"
