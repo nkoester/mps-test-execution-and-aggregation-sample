@@ -189,13 +189,25 @@ fun MpsCheck.checkMpsModels(resultFile: String) {
     mpsHome.set(layout.dir(provider { mpsGenericPath.toFile() }))
     projectLocation.set(layout.projectDirectory.dir("mpsModules"))
     pluginRoots.add(mpsHome.dir("plugins"))
-    // the dependencies (iets3, mbeddr, MPS-extensions) as IDEA plugins, so plugin dependencies resolve: iets3 checking
-    // rules use the MPS-extensions viewmodel, whose classes are not found when it is only loaded as a module library
-    pluginRoots.add(layout.buildDirectory.dir("dependencies"))
     junitFile.set(layout.buildDirectory.file("test-results/$resultFile"))
     // one test case per message
     junitFormat.set("message")
     maxHeapSize = "4G"
+
+    // MPS keeps caches of the library jars in the task's system dir (build/tmp/<task>). After the dependencies were
+    // extracted again, stale caches make module classes unloadable (e.g. NoClassDefFoundError for the MPS-extensions
+    // viewmodel in iets3 checking rules), so the dir is reset whenever the extraction marker changes
+    val extractionMarker = layout.buildDirectory.file("dependencies/.extracted")
+    doFirst {
+        val extracted = extractionMarker.get().asFile
+        val current = if (extracted.isFile) "${extracted.lastModified()} ${extracted.readText()}" else ""
+        val seen = temporaryDir.resolve("dependencies.extracted")
+        if (!seen.isFile || seen.readText() != current) {
+            temporaryDir.deleteRecursively()
+            temporaryDir.mkdirs()
+            seen.writeText(current)
+        }
+    }
 }
 
 // contains a model check error and a warning on purpose; checked only by checkFailingModels
