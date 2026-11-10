@@ -29,6 +29,7 @@ once their matchers append the node URL to the description (2), they get links w
 Links open the node in a running MPS via its HTTP support plugin.
 """
 import argparse
+import html
 import json
 import re
 import sys
@@ -51,6 +52,16 @@ NODE_URL_SUFFIX = re.compile(r"\s*\[?https?://[^\s\]]+/node\?ref=[^\s\]]+\]?")
 SEVERITY = re.compile(r"^(Error|Warning|Info):\s*")
 # generated test names end with the node id of the test item, but carry no node reference to strip it with
 NODE_ID_SUFFIX = re.compile(r"_\d{10,}$")
+# stack trace frames of these packages are collapsed in the failure details ("… N framework frames")
+FRAMEWORK_PACKAGES = (
+    "java.", "javax.", "jdk.", "sun.", "com.sun.", "kotlin.", "kotlinx.", "com.intellij.", "org.junit.", "junit.",
+    "jetbrains.mps.", "org.apache.tools.", "org.gradle.", "worker.org.gradle.",
+)
+# a stack frame; the class loader or module prefix ("java.base/", "l.m.t.generated.failing//") is dropped
+FRAME = re.compile(r"^\s*at\s+(?:[^\s(/]+/+)?(?P<frame>[\w$.<>]+\(.*\))\s*$")
+MORE_FRAMES = re.compile(r"^\s*\.\.\. \d+ more\s*$")
+# lines per failure detail, the full text is in the artifacts
+DETAIL_MAX_LINES = 40
 # with --show-passed: runs with fewer test cases are shown in a single table, larger ones fold their passed tests
 FOLD_MIN_CASES = 5
 
@@ -134,6 +145,7 @@ def parse_file(path: Path):
                 "time": float(case.get("time") or 0),
                 "status": status,
                 "message": message,
+                "detail": detail,
                 "ref": props.get(f"nodeRef.{plain}") or props.get("nodeRef") or ref_from_text(message, detail),
             }
 
@@ -205,6 +217,61 @@ def download_link(url: str | None, label: str, artifact: str) -> str:
     return f'[{DOWNLOAD} {label}]({url} "Download {artifact}")' if url else ""
 
 
+def condense_trace(text: str) -> list[str]:
+    """Stack trace with runs of framework frames collapsed, at most DETAIL_MAX_LINES lines."""
+    out: list[str] = []
+    skipped = 0
+
+    def flush() -> None:
+        nonlocal skipped
+        if skipped:
+            out.append(f"    … {skipped} framework frame{'s' if skipped != 1 else ''}")
+            skipped = 0
+
+    for line in text.strip().splitlines():
+        if MORE_FRAMES.match(line):
+            skipped += int(line.split()[1])
+            continue
+        frame = FRAME.match(line)
+        if frame and frame.group("frame").startswith(FRAMEWORK_PACKAGES):
+            skipped += 1
+            continue
+        flush()
+        if frame:
+            out.append(f"    at {frame.group('frame')}")
+            continue
+        # node URLs are linked in the Node column; suppressed exceptions are indented like in Java
+        line = NODE_URL_SUFFIX.sub("", line).strip()
+        out.append(f"  {line}" if line.startswith("Suppressed:") else line)
+    flush()
+    if len(out) > DETAIL_MAX_LINES:
+        rest = len(out) - DETAIL_MAX_LINES
+        out = out[:DETAIL_MAX_LINES] + [f"… {rest} more line{'s' if rest != 1 else ''}, full trace in the artifact"]
+    return out
+
+
+def failure_details(cases: list[dict]) -> list[str]:
+    """Folded, condensed stack traces of the failures that have one (e.g. generated JUnit tests)."""
+    out = []
+    for c in cases:
+        if c["status"] not in ("failed", "error") or len(c["detail"].strip().splitlines()) < 2:
+            continue
+        lines = condense_trace(c["detail"])
+        # GitHub needs the blank lines around the fenced block inside <details>
+        out += [
+            "<details>",
+            f"<summary>{html.escape(test_cell(c))}: stack trace</summary>",
+            "",
+            "~~~text",
+            *lines,
+            "~~~",
+            "",
+            "</details>",
+            "",
+        ]
+    return out
+
+
 def run_section(run: dict, base: str, number: str, show_passed: bool) -> list[str]:
     cases = run["cases"]
     s = stats(cases)
@@ -224,11 +291,11 @@ def run_section(run: dict, base: str, number: str, show_passed: bool) -> list[st
     failures = [c for c in cases if c["status"] != "passed"]
     passed = [c for c in cases if c["status"] == "passed"]
     if not show_passed:
-        return out + (case_table(failures, base) if failures else [])
+        return out + (case_table(failures, base) + failure_details(failures) if failures else [])
     if len(cases) < FOLD_MIN_CASES:
-        return out + case_table(cases, base)
+        return out + case_table(cases, base) + failure_details(failures)
     if failures:
-        out += case_table(failures, base)
+        out += [*case_table(failures, base), *failure_details(failures)]
     if passed:
         # GitHub needs the blank line after <summary> to render the markdown table inside
         out += ["<details>", f"<summary>{len(passed)} passed</summary>", "", *case_table(passed, base), "</details>", ""]
